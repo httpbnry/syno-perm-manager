@@ -2,17 +2,59 @@ use crate::models::{AclEntry, DirNode, GroupDetail, ShareFolder, UserDetail};
 
 pub fn parse_share_list(output: &str) -> Vec<ShareFolder> {
     let mut shares = Vec::new();
+    let mut in_shares = false;
+
     for line in output.lines() {
         let name = line.trim();
-        if name.is_empty()
-            || name.contains("Share Listed")
-            || name.contains("No Enumerate")
-            || name.contains("Assumeing")
-            || name.contains("Copyright")
-            || name.contains("Usage:")
+
+        if name.is_empty() {
+            continue;
+        }
+
+        // Detectar cuando empieza la lista real de shares
+        if name.contains("Listed:") || name.ends_with("Listed") {
+            in_shares = true;
+            continue;
+        }
+
+        // Si todavia no llegamos a la lista, skip
+        if !in_shares {
+            // Algunas versiones de synoshare no tienen "Listed:", 
+            // asi que tambien detectamos por la primera linea que parece un nombre
+            if name.contains("Share Enum")
+                || name.contains("Arguments")
+                || name.contains("[0x")
+                || name.contains("Copyright")
+                || name.contains("Usage:")
+                || name.contains("No Enumerate")
+                || name.contains("Assumeing")
+                || name.contains("ALL")
+                || name.contains("ENC")
+                || name.contains("LOCAL")
+                || name.contains("USB")
+                || name.contains("SATA")
+                || name.contains("GLUSTER")
+                || name.contains("COLD")
+                || name.contains("OFFLINE")
+                || name.contains("CEPH")
+                || name.contains("WORM")
+                || name.contains("MISSING")
+                || name.contains("DEC")
+                || name.contains("C2")
+            {
+                continue;
+            }
+        }
+
+        // Skip lineas que parecen headers del comando
+        if name.starts_with('[')
+            || name.contains("Listed")
+            || name.contains("Share Enum")
+            || name.contains("Arguments")
         {
             continue;
         }
+
         shares.push(ShareFolder {
             name: name.to_string(),
             path: format!("/volume1/{}", name),
@@ -24,13 +66,27 @@ pub fn parse_share_list(output: &str) -> Vec<ShareFolder> {
 
 pub fn parse_user_list(output: &str) -> Vec<String> {
     let mut users = Vec::new();
+    let mut in_list = false;
     for line in output.lines() {
         let name = line.trim();
-        if name.is_empty()
-            || name.contains("User Listed")
-            || name.contains("No Enumerate")
-            || name.contains("Assumeing")
-        {
+        if name.is_empty() {
+            continue;
+        }
+        if name.contains("User Listed") || name.ends_with("Listed") || name.contains("Listed:") {
+            in_list = true;
+            continue;
+        }
+        if !in_list {
+            if name.contains("Copyright")
+                || name.contains("Usage:")
+                || name.contains("No Enumerate")
+                || name.contains("Assumeing")
+                || name.starts_with('[')
+            {
+                continue;
+            }
+        }
+        if name.contains("User Listed") || name.contains("Listed") {
             continue;
         }
         users.push(name.to_string());
@@ -40,13 +96,27 @@ pub fn parse_user_list(output: &str) -> Vec<String> {
 
 pub fn parse_group_list(output: &str) -> Vec<String> {
     let mut groups = Vec::new();
+    let mut in_list = false;
     for line in output.lines() {
         let name = line.trim();
-        if name.is_empty()
-            || name.contains("Group Listed")
-            || name.contains("No Enumerate")
-            || name.contains("Assumeing")
-        {
+        if name.is_empty() {
+            continue;
+        }
+        if name.contains("Group Listed") || name.ends_with("Listed") || name.contains("Listed:") {
+            in_list = true;
+            continue;
+        }
+        if !in_list {
+            if name.contains("Copyright")
+                || name.contains("Usage:")
+                || name.contains("No Enumerate")
+                || name.contains("Assumeing")
+                || name.starts_with('[')
+            {
+                continue;
+            }
+        }
+        if name.contains("Group Listed") || name.contains("Listed") {
             continue;
         }
         groups.push(name.to_string());
