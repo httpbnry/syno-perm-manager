@@ -1,5 +1,7 @@
 use std::sync::Mutex as StdMutex;
 use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 use rusqlite::Connection as DbConnection;
 use serde::{Deserialize, Serialize};
@@ -172,9 +174,9 @@ pub async fn connect_to_nas(
 
     if let Some(script) = &startup_script {
         if !script.trim().is_empty() {
-            let _ = Command::new("cmd")
-                .args(["/C", script])
-                .output();
+            let mut cmd = Command::new("cmd");
+            cmd.arg("/S").arg("/C").raw_arg(script);
+            let _ = cmd.output();
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         }
     }
@@ -977,8 +979,9 @@ pub async fn run_startup_script(
     }
 
     let script = script.unwrap();
-    let output = Command::new("cmd")
-        .args(["/C", &script])
+    let mut cmd = Command::new("cmd");
+    cmd.arg("/S").arg("/C").raw_arg(&script);
+    let output = cmd
         .output()
         .map_err(|e| AppError::Other(format!("No se pudo ejecutar el script: {}", e)))?;
 
@@ -1012,8 +1015,9 @@ pub async fn run_startup_script(
 pub async fn test_startup_script(
     script: String,
 ) -> AppResult<StartupResult> {
-    let output = Command::new("cmd")
-        .args(["/C", &script])
+    let mut cmd = Command::new("cmd");
+    cmd.arg("/S").arg("/C").raw_arg(&script);
+    let output = cmd
         .output()
         .map_err(|e| AppError::Other(format!("No se pudo ejecutar: {}", e)))?;
 
