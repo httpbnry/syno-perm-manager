@@ -174,8 +174,9 @@ pub async fn connect_to_nas(
 
     if let Some(script) = &startup_script {
         if !script.trim().is_empty() {
+            let quoted = format!("\"{}\"", script);
             let mut cmd = Command::new("cmd");
-            cmd.arg("/S").arg("/C").raw_arg(script);
+            cmd.arg("/S").arg("/C").raw_arg(&quoted);
             let _ = cmd.output();
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         }
@@ -979,8 +980,9 @@ pub async fn run_startup_script(
     }
 
     let script = script.unwrap();
+    let quoted = format!("\"{}\"", script);
     let mut cmd = Command::new("cmd");
-    cmd.arg("/S").arg("/C").raw_arg(&script);
+    cmd.arg("/S").arg("/C").raw_arg(&quoted);
     let output = cmd
         .output()
         .map_err(|e| AppError::Other(format!("No se pudo ejecutar el script: {}", e)))?;
@@ -1015,8 +1017,9 @@ pub async fn run_startup_script(
 pub async fn test_startup_script(
     script: String,
 ) -> AppResult<StartupResult> {
+    let quoted = format!("\"{}\"", script);
     let mut cmd = Command::new("cmd");
-    cmd.arg("/S").arg("/C").raw_arg(&script);
+    cmd.arg("/S").arg("/C").raw_arg(&quoted);
     let output = cmd
         .output()
         .map_err(|e| AppError::Other(format!("No se pudo ejecutar: {}", e)))?;
