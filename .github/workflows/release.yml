@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Syno Perm Manager ${{ github.ref_name }}'
+          releaseBody: |
+            ## Syno Perm Manager ${{ github.ref_name }}
+            
+            ### Instalacion
+            - Descarga `Syno-Perm-Manager_${{ github.ref_name }}_x64-setup.exe` (recomendado)
+            - O descarga `Syno-Perm-Manager_${{ github.ref_name }}_x64_en-US.msi` para instalacion corporativa
+            - El instalador descarga WebView2 automaticamente si no esta instalado
+            - No requiere Rust, Node ni dependencias adicionales
+            
+            ### Novedades
+            - Gestor de permisos ACL multi-carpeta
+            - Matriz visual de permisos
+            - Wizard de alta de usuario
+            - Gestion de usuarios y grupos
+            - Dashboard con estadisticas
+            - Logs de auditoria con deshacer
+            - Analisis de permisos por usuario con colores
+            - Soporte de clave SSH
+            - Script pre-conexion (VPN)
+            - Tema claro/oscuro
+          releaseDraft: true
+          prerelease: false
