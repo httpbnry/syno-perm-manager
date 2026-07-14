@@ -113,8 +113,7 @@ function exportCSV() {
 
 function shortPath(path: string): string {
   const parts = path.split('/')
-  const last = parts[parts.length - 1]
-  return last.length > 12 ? last.slice(0, 10) + '..' : last
+  return parts[parts.length - 1]
 }
 
 function cellLabel(color: string): string {
@@ -281,7 +280,7 @@ const filteredRows = computed(() => {
 }
 .check-item:hover { background: var(--bg-hover); }
 .check-item input { width: 13px; height: 13px; accent-color: var(--accent); }
-.path-text { font-family: monospace; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.path-text { font-family: monospace; font-size: 10px; white-space: nowrap; }
 .more-hint { font-size: 10px; color: var(--text-muted); padding: 4px; text-align: center; }
 
 .ptype {
@@ -320,8 +319,8 @@ const filteredRows = computed(() => {
   position: sticky; top: 0; background: var(--bg-secondary);
   color: var(--text-secondary); font-weight: 600; font-size: 9px;
   padding: 6px 4px; text-align: center; border-bottom: 2px solid var(--border);
-  border-right: 1px solid var(--border); white-space: nowrap; overflow: hidden;
-  text-overflow: ellipsis; z-index: 2; text-transform: uppercase;
+  border-right: 1px solid var(--border); white-space: nowrap;
+  z-index: 2; text-transform: uppercase; min-width: 50px;
 }
 
 .sticky-corner {
@@ -332,9 +331,9 @@ const filteredRows = computed(() => {
   position: sticky; left: 0; background: var(--bg-secondary); z-index: 1;
   padding: 4px 8px; display: flex; align-items: center; gap: 4px;
   border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
-  min-width: 160px; max-width: 160px;
+  min-width: 160px; max-width: 200px;
 }
-.label-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.label-name { font-size: 11px; white-space: nowrap; }
 
 .grid-cell {
   display: flex; align-items: center; justify-content: center;
