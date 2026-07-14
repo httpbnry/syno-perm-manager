@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useExplorerStore } from '../stores/explorer'
 import type { PermMatrix } from '../types'
+import type { TreeNode } from '../stores/explorer'
+import MatrixTree from '../components/MatrixTree.vue'
 
 const store = useExplorerStore()
 
@@ -21,23 +23,27 @@ onMounted(() => {
   store.loadUsersGroups()
 })
 
-const allPaths = computed(() => {
-  const paths: string[] = []
-  function walk(nodes: typeof store.tree) {
-    for (const node of nodes) {
-      paths.push(node.path)
-      if (node.expanded) walk(node.children)
-    }
+const filteredTreeNodes = computed<TreeNode[]>(() => {
+  const q = pathSearch.value.toLowerCase()
+  if (!q) return store.tree
+
+  function nodeMatches(node: TreeNode): boolean {
+    if (node.name.toLowerCase().includes(q) || node.path.toLowerCase().includes(q)) return true
+    return node.children.some(nodeMatches)
   }
-  walk(store.tree)
-  return paths
+  function filterNodes(nodes: TreeNode[]): TreeNode[] {
+    return nodes.filter(nodeMatches).map((n) => ({
+      ...n,
+      children: filterNodes(n.children),
+      expanded: q ? true : n.expanded,
+    }))
+  }
+  return filterNodes(store.tree)
 })
 
-const filteredPaths = computed(() => {
-  const q = pathSearch.value.toLowerCase()
-  if (!q) return allPaths.value
-  return allPaths.value.filter((p) => p.toLowerCase().includes(q))
-})
+function toggleExpand(node: TreeNode) {
+  store.expandNode(node)
+}
 
 const allPrincipals = computed(() => {
   const list: { type: string; name: string; key: string }[] = []
@@ -64,7 +70,17 @@ function togglePrincipal(key: string) {
   selectedPrincipals.value = new Set(selectedPrincipals.value)
 }
 
-function selectAllPaths() { selectedPaths.value = new Set(filteredPaths.value) }
+function selectAllPaths() {
+  const all = new Set<string>()
+  function walk(nodes: TreeNode[]) {
+    for (const n of nodes) {
+      all.add(n.path)
+      if (n.expanded) walk(n.children)
+    }
+  }
+  walk(filteredTreeNodes.value)
+  selectedPaths.value = all
+}
 function selectAllPrincipals() { selectedPrincipals.value = new Set(filteredPrincipals.value.map((p) => p.key)) }
 function clearAll() {
   selectedPaths.value = new Set()
@@ -194,11 +210,13 @@ const filteredRows = computed(() => {
           </div>
           <input v-model="pathSearch" placeholder="Filtrar..." class="input-mini" />
           <div class="check-list">
-            <label v-for="p in filteredPaths.slice(0, 100)" :key="p" class="check-item">
-              <input type="checkbox" :checked="selectedPaths.has(p)" @change="togglePath(p)" />
-              <span class="path-text">{{ shortPath(p) }}</span>
-            </label>
-            <div v-if="filteredPaths.length > 100" class="more-hint">+{{ filteredPaths.length - 100 }} mas</div>
+            <MatrixTree
+              :nodes="filteredTreeNodes"
+              :selected-paths="selectedPaths"
+              :depth="0"
+              @toggle-path="togglePath"
+              @toggle-expand="toggleExpand"
+            />
           </div>
         </div>
 
