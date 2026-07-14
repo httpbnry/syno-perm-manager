@@ -9,6 +9,7 @@ const store = useConnectionStore()
 
 const showForm = ref(false)
 const testing = ref(false)
+const connecting = ref<number | null>(null)
 const testResult = ref<string>('')
 const testError = ref<string>('')
 
@@ -67,7 +68,9 @@ async function save() {
 }
 
 async function connect(id: number) {
+  connecting.value = id
   const ok = await store.connect(id)
+  connecting.value = null
   if (ok) {
     router.push('/explorer')
   }
@@ -192,7 +195,11 @@ async function remove(id: number) {
           </td>
           <td>
             <div class="btn-group">
-              <button class="btn btn-primary btn-sm" @click="connect(c.id!)">Conectar</button>
+              <button class="btn btn-primary btn-sm" @click="connect(c.id!)" :disabled="connecting !== null">
+                <span v-if="connecting === c.id" class="loading-spinner"></span>
+                <span v-if="connecting === c.id"> Conectando...</span>
+                <span v-else>Conectar</span>
+              </button>
               <button class="btn btn-danger btn-sm" @click="remove(c.id!)">Eliminar</button>
             </div>
           </td>

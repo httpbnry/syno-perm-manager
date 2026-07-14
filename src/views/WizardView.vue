@@ -20,7 +20,7 @@ const userForm = ref<CreateUserInput>({
   username: '', password: '', full_name: '', expired: false, mail: '', privilege: 0,
 })
 
-const selectedGroups = ref<string[]>([])
+const selectedGroups = ref<string[]>(['users'])
 const selectedFolderPerms = ref<Map<string, AclEntry[]>>(new Map())
 
 const PERM_PRESETS: Record<string, { perms: string; flags: string }> = {
@@ -174,7 +174,7 @@ function restart() {
   autoFullName.value = ''
   passwordGen.value = ''
   userForm.value = { username: '', password: '', full_name: '', expired: false, mail: '', privilege: 0 }
-  selectedGroups.value = []
+  selectedGroups.value = ['users']
   selectedFolderPerms.value = new Map()
   success.value = ''
   error.value = ''
