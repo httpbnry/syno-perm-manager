@@ -254,6 +254,7 @@ export const useExplorerStore = defineStore('explorer', () => {
       permColors.value = colors
       analyzeProgress.value = { current: visiblePaths.length, total: visiblePaths.length }
       computeOverrides()
+      propagateSubfolderAccess()
     } catch (e: any) {
       error.value = String(e)
     }
@@ -266,6 +267,32 @@ export const useExplorerStore = defineStore('explorer', () => {
     overrides.value = new Set()
     selectedPrincipal.value = null
     onlyConflicts.value = false
+  }
+
+  function propagateSubfolderAccess() {
+    function hasAccessInChildren(node: TreeNode): boolean {
+      for (const child of node.children) {
+        const c = permColors.value.get(child.path)
+        if (c === 'green' || c === 'orange') return true
+        if (child.expanded && hasAccessInChildren(child)) return true
+      }
+      return false
+    }
+
+    function walk(nodes: TreeNode[]) {
+      for (const node of nodes) {
+        const myColor = permColors.value.get(node.path)
+        if (myColor === 'red' && node.expanded && hasAccessInChildren(node)) {
+          permColors.value.set(node.path, 'orange')
+        }
+        if (node.expanded) {
+          walk(node.children)
+        }
+      }
+    }
+
+    walk(tree.value)
+    permColors.value = new Map(permColors.value)
   }
 
   async function refreshCache() {

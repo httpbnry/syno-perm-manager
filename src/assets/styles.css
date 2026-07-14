@@ -47,6 +47,9 @@ body {
   font-size: 14px;
   color: var(--text-primary);
   background: var(--bg-primary);
+}
+
+.sidebar {
   user-select: none;
 }
 

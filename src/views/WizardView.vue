@@ -136,6 +136,7 @@ async function finish() {
     await invoke('create_user', { input: userForm.value })
 
     for (const group of selectedGroups.value) {
+      if (group === 'users') continue
       try {
         await invoke('add_group_member', { groupname: group, username: userForm.value.username })
       } catch (e: any) {
@@ -167,6 +168,10 @@ async function finish() {
   } finally {
     creating.value = false
   }
+}
+
+function copyText(text: string) {
+  navigator.clipboard.writeText(text)
 }
 
 function restart() {
@@ -305,11 +310,32 @@ function restart() {
     <div class="empty-state" style="padding: 30px;">
       <div style="font-size: 48px; margin-bottom: 12px;">&#10004;</div>
       <h2 style="color: var(--success); margin-bottom: 8px;">Usuario creado</h2>
-      <p style="margin-bottom: 4px;">Usuario: <strong>{{ userForm.username }}</strong></p>
-      <p style="margin-bottom: 4px;">Password: <code style="color: var(--accent);">{{ passwordGen }}</code></p>
-      <p style="margin-bottom: 4px;">Grupos: {{ selectedGroups.join(', ') || 'ninguno' }}</p>
-      <p style="margin-bottom: 16px;">Carpetas: {{ foldersWithPerms.length }} configuradas</p>
-      <div class="btn-group" style="justify-content: center;">
+
+      <div class="copy-row">
+        <span>Usuario:</span>
+        <code>{{ userForm.username }}</code>
+        <button class="btn btn-secondary btn-sm" @click="copyText(userForm.username)">Copiar</button>
+      </div>
+
+      <div class="copy-row">
+        <span>Password:</span>
+        <code>{{ passwordGen }}</code>
+        <button class="btn btn-secondary btn-sm" @click="copyText(passwordGen)">Copiar</button>
+      </div>
+
+      <div class="copy-row">
+        <span>Grupos:</span>
+        <code>{{ selectedGroups.join(', ') || 'ninguno' }}</code>
+      </div>
+
+      <div class="copy-row">
+        <span>Carpetas:</span>
+        <code>{{ foldersWithPerms.length }} configuradas</code>
+      </div>
+
+      <p style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">Guarda la password antes de cerrar</p>
+
+      <div class="btn-group" style="justify-content: center; margin-top: 16px;">
         <button class="btn btn-primary" @click="restart">Crear otro</button>
         <button class="btn btn-secondary" @click="router.push('/dashboard')">Dashboard</button>
       </div>
@@ -318,6 +344,30 @@ function restart() {
 </template>
 
 <style scoped>
+.copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.copy-row span {
+  color: var(--text-secondary);
+  min-width: 80px;
+  text-align: right;
+}
+
+.copy-row code {
+  font-family: monospace;
+  color: var(--accent);
+  background: var(--bg-input);
+  padding: 3px 8px;
+  border-radius: 4px;
+  flex: 1;
+  text-align: left;
+}
+
 .wizard-steps {
   display: flex;
   align-items: center;
