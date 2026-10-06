@@ -111,18 +111,31 @@ async function generateMatrix() {
 
 function exportCSV() {
   if (!matrix.value) return
-  const headers = ['Principal', ...matrix.value.paths]
+  const esc = (v: string) => {
+    const safe = /^[\s]*[=+@-]/.test(v) || /^[\t\r\n]/.test(v) ? `'${v}` : v
+    return `"${safe.replace(/"/g, '""')}"`
+  }
+  const accessLabel = (color: string) =>
+    color === 'green' ? 'RW' : color === 'orange' ? 'R' : 'sin acceso'
+  const headers = ['Principal', 'Tipo', 'Carpeta', 'Acceso', 'Permisos']
   const rows: string[][] = []
   for (const row of matrix.value.rows) {
-    const cells = row.cells.map((c) => c.color)
-    rows.push([`${row.principal_type}:${row.principal}`, ...cells])
+    for (const cell of row.cells) {
+      rows.push([
+        row.principal,
+        row.principal_type,
+        cell.path,
+        accessLabel(cell.color),
+        cell.permissions || '',
+      ])
+    }
   }
-  const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
+  const csv = [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'perm-matrix.csv'
+  a.download = `perm-matrix-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }

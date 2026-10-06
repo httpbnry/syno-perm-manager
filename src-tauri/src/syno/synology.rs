@@ -18,19 +18,16 @@ impl SynologyProvider {
     fn check_result(res: &CommandResult, context: &str) -> Result<()> {
         if res.exit_code != 0 {
             let msg = extract_error(res);
-            if msg.is_empty() {
-                Ok(())
-            } else {
-                Err(anyhow!("{}: {}", context, msg))
-            }
+            Err(anyhow!("{} (exit {}): {}", context, res.exit_code, msg))
         } else {
             Ok(())
         }
     }
 
     async fn find_dirs(&self, ssh: &mut SshClient, path: &str) -> Result<Vec<String>> {
-        let cmd = format!("{} {} -type d 2>/dev/null", FIND, shell_escape(path));
+        let cmd = format!("{} {} -type d \\( {} \\) -prune -o -type d -print", FIND, shell_escape(path), ssh.exclusion_expression());
         let res = ssh.exec(&cmd).await?;
+        Self::check_result(&res, "find_dirs")?;
         let mut dirs = Vec::new();
         for line in res.stdout.lines() {
             let p = line.trim();
@@ -52,7 +49,13 @@ impl crate::syno::provider::AclProvider for SynologyProvider {
     async fn list_shares(&self, ssh: &mut SshClient) -> Result<Vec<ShareFolder>> {
         let res = ssh.exec(&format!("{} --enum ALL", SYNOSHARE)).await?;
         Self::check_result(&res, "list_shares")?;
-        let shares = parse_share_list(&res.stdout);
+        let mut shares = parse_share_list(&res.stdout);
+        for share in &mut shares {
+            let detail = ssh.exec(&format!("{} --get {}", SYNOSHARE, shell_escape(&share.name))).await?;
+            Self::check_result(&detail, "share_path")?;
+            share.path = crate::syno::parser::parse_share_path(&detail.stdout)
+                .ok_or_else(|| anyhow!("No se pudo resolver la ruta real de {}", share.name))?;
+        }
         Ok(shares)
     }
 
@@ -70,8 +73,8 @@ impl crate::syno::provider::AclProvider for SynologyProvider {
 
     async fn list_dirs(&self, ssh: &mut SshClient, path: &str) -> Result<Vec<DirNode>> {
         let cmd = format!(
-            "{} {} -mindepth 1 -maxdepth 1 -type d 2>/dev/null",
-            FIND, shell_escape(path)
+            "{} {} -mindepth 1 -maxdepth 1 -type d \\( {} \\) -prune -o -type d -print",
+            FIND, shell_escape(path), ssh.exclusion_expression()
         );
         let res = ssh.exec(&cmd).await?;
         Self::check_result(&res, "list_dirs")?;
@@ -83,9 +86,6 @@ impl crate::syno::provider::AclProvider for SynologyProvider {
         let res = ssh.exec(&cmd).await?;
         if res.exit_code != 0 {
             let msg = extract_error(&res);
-            if msg.is_empty() {
-                return Ok(Vec::new());
-            }
             return Err(anyhow!("get_acl: {}", msg));
         }
         Ok(parse_acl_output(&res.stdout))
@@ -111,7 +111,7 @@ impl crate::syno::provider::AclProvider for SynologyProvider {
         let mut diffs = Vec::new();
 
         for path in &all_paths {
-            let current = self.get_acl(ssh, path).await.unwrap_or_default();
+            let current = self.get_acl(ssh, path).await?;
 
             for entry in entries {
                 let key = format!("{}:{}", entry.principal_type, entry.name);
@@ -170,7 +170,7 @@ impl crate::syno::provider::AclProvider for SynologyProvider {
 
             for entry in entries {
                 let entry_str = build_acl_entry_string(entry);
-                let cmd = format!("{} -add {} {}", SYNOACLTOOL, shell_escape(path), entry_str);
+                let cmd = format!("{} -add {} {}", SYNOACLTOOL, shell_escape(path), shell_escape(&entry_str));
                 match ssh.exec(&cmd).await {
                     Ok(res) => {
                         if res.exit_code != 0 {
@@ -208,7 +208,7 @@ impl crate::syno::provider::AclProvider for SynologyProvider {
         if recursive {
             let dirs = self.find_dirs(ssh, path).await?;
             for dir in &dirs {
-                let entries = self.get_acl(ssh, dir).await.unwrap_or_default();
+                let entries = self.get_acl(ssh, dir).await?;
                 snapshots.push(PathSnapshot {
                     path: dir.clone(),
                     entries,
@@ -245,9 +245,10 @@ impl crate::syno::provider::AclProvider for SynologyProvider {
 
             // Paso 1: borrar todas las ACLs actuales
             let del_cmd = format!("{} -del {}", SYNOACLTOOL, shell_escape(&snap.path));
-            let del_res = ssh.exec(&del_cmd).await;
-            if let Err(e) = &del_res {
-                errors.push(format!("{} (del): {}", snap.path, e));
+            match ssh.exec(&del_cmd).await {
+                Ok(res) if res.exit_code == 0 => {},
+                Ok(res) => { errors.push(format!("{} (del): {}", snap.path, extract_error(&res))); continue; },
+                Err(e) => { errors.push(format!("{} (del): {}", snap.path, e)); continue; },
             }
 
             // Paso 2: añadir las entradas del snapshot una a una
@@ -259,7 +260,7 @@ impl crate::syno::provider::AclProvider for SynologyProvider {
             let mut all_ok = true;
             for entry in &valid_entries {
                 let entry_str = build_acl_entry_string(entry);
-                let add_cmd = format!("{} -add {} {}", SYNOACLTOOL, shell_escape(&snap.path), entry_str);
+                let add_cmd = format!("{} -add {} {}", SYNOACLTOOL, shell_escape(&snap.path), shell_escape(&entry_str));
                 match ssh.exec(&add_cmd).await {
                     Ok(res) => {
                         if res.exit_code != 0 {

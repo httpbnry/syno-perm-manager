@@ -8,6 +8,7 @@ const routes = [
   { path: '/explorer', name: 'explorer', component: () => import('../views/ExplorerView.vue') },
   { path: '/acl-editor', name: 'acl-editor', component: () => import('../views/AclEditorView.vue') },
   { path: '/matrix', name: 'matrix', component: () => import('../views/MatrixView.vue') },
+  { path: '/compare', name: 'compare', component: () => import('../views/CompareView.vue') },
   { path: '/wizard', name: 'wizard', component: () => import('../views/WizardView.vue') },
   { path: '/users', name: 'users', component: () => import('../views/UsersView.vue') },
   { path: '/logs', name: 'logs', component: () => import('../views/LogsView.vue') },

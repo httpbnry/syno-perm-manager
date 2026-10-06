@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { invoke } from '@tauri-apps/api/core'
+import { cachedRead } from '../utils/readCache'
 import { useConnectionStore } from '../stores/connection'
 import type { DashboardStats } from '../types'
 
@@ -9,6 +9,7 @@ const router = useRouter()
 const connStore = useConnectionStore()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(true)
+const error = ref('')
 
 onMounted(async () => {
   if (!connStore.isConnected) {
@@ -16,9 +17,9 @@ onMounted(async () => {
     return
   }
   try {
-    stats.value = await invoke<DashboardStats>('get_dashboard_stats')
+    stats.value = await cachedRead<DashboardStats>('get_dashboard_stats')
   } catch (e: any) {
-    console.error(e)
+    error.value = String(e)
   } finally {
     loading.value = false
   }
@@ -32,9 +33,11 @@ const successRate = computed(() => {
 
 <template>
   <div class="view-header">
-    <h1>Dashboard</h1>
-    <p>Resumen general del NAS {{ connStore.connectedName }}</p>
+    <div class="eyebrow">CENTRO DE CONTROL</div>
+    <h1>Todo tu NAS, bajo control</h1>
+    <p>Usuarios, permisos y actividad de {{ connStore.connectedName }}</p>
   </div>
+  <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
 
   <div v-if="loading" class="card">
     <div class="empty-state">
@@ -44,6 +47,10 @@ const successRate = computed(() => {
   </div>
 
   <div v-else-if="stats">
+    <section class="dashboard-hero">
+      <div><span class="eyebrow">MENOS TAREAS REPETITIVAS</span><h2>Los mismos permisos.<br />Sin empezar de cero.</h2><p>Compara dos usuarios y copia sus grupos y permisos de carpetas con una vista previa de cada cambio.</p><button class="btn btn-primary" @click="router.push('/compare')">Comparar permisos <span aria-hidden="true">→</span></button></div>
+      <div class="hero-diagram" aria-hidden="true"><div class="profile-tile"><span>USUARIO ORIGEN</span><strong>Grupos + ACL</strong><small>Referencia de acceso</small></div><span class="hero-arrow">→</span><div class="profile-tile target-tile"><span>USUARIO DESTINO</span><strong>Accesos alineados</strong><small>Comparar · Revisar · Aplicar</small></div></div>
+    </section>
     <!-- Stats cards -->
     <div class="stats-grid">
       <div class="stat-card" @click="router.push('/users')">
@@ -131,6 +138,17 @@ const successRate = computed(() => {
   gap: 12px;
   margin-bottom: 16px;
 }
+
+.dashboard-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: center; padding: 32px; margin-bottom: 24px; border: 1px solid var(--border); border-radius: 18px; background: linear-gradient(115deg, var(--bg-secondary), var(--bg-tertiary)); }
+.dashboard-hero h2 { font-size: 27px; line-height: 1.2; letter-spacing: -.6px; margin: 12px 0; }
+.dashboard-hero p { color: var(--text-secondary); max-width: 420px; font-size: 13px; margin-bottom: 20px; }
+.hero-diagram { display: flex; align-items: center; gap: 12px; }
+.profile-tile { padding: 20px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 14px; flex: 1; }
+.profile-tile span, .profile-tile small { display: block; font-size: 9px; color: var(--text-muted); }
+.profile-tile strong { display: block; font-size: 13px; margin: 12px 0; }
+.target-tile { border-color: var(--accent); }
+.hero-arrow { font-size: 25px; color: var(--accent); }
+@media (max-width: 1150px) { .dashboard-hero { grid-template-columns: 1fr; } .hero-diagram { display: none; } }
 
 .stat-card {
   background: var(--bg-secondary);

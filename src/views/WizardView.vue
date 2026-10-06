@@ -3,7 +3,8 @@ import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useRouter } from 'vue-router'
 import { useExplorerStore } from '../stores/explorer'
-import type { CreateUserInput, AclEntry } from '../types'
+import { generatePassword } from '../utils/password'
+import type { CreateUserInput, AclEntry, ApplyResult } from '../types'
 
 const router = useRouter()
 const store = useExplorerStore()
@@ -40,15 +41,6 @@ function generateUsername(fullName: string): string {
   return firstInitial + lastName.charAt(0).toUpperCase() + lastName.slice(1).toLowerCase()
 }
 
-function generatePassword(length: number = 12): string {
-  const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#%'
-  let pwd = ''
-  for (let i = 0; i < length; i++) {
-    pwd += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return pwd
-}
-
 function todayDDMMYY(): string {
   const d = new Date()
   const dd = String(d.getDate()).padStart(2, '0')
@@ -65,14 +57,14 @@ function onFullNameInput() {
     passwordGen.value = generatePassword()
     userForm.value.password = passwordGen.value
   }
-  userForm.value.full_name = `${fullName} Alta ${todayDDMMYY()} ${passwordGen.value}`
+  userForm.value.full_name = `${fullName} Alta ${todayDDMMYY()}`
 }
 
 function regenPassword() {
   passwordGen.value = generatePassword()
   userForm.value.password = passwordGen.value
   if (autoFullName.value.trim()) {
-    userForm.value.full_name = `${autoFullName.value.trim()} Alta ${todayDDMMYY()} ${passwordGen.value}`
+    userForm.value.full_name = `${autoFullName.value.trim()} Alta ${todayDDMMYY()}`
   }
 }
 
@@ -86,7 +78,14 @@ function toggleGroup(name: string) {
 }
 
 function applyPresetToShare(path: string, preset: string) {
+  // "Sin acceso" = ausencia de ACE: quitar la entrada del usuario en esa
+  // carpeta en vez de crear una ACE vacia '----------' que solo mete ruido.
+  if (preset === 'Sin acceso') {
+    removeFolderPerm(path)
+    return
+  }
   const p = PERM_PRESETS[preset]
+  if (!p) return
   const entry: AclEntry = {
     principal_type: 'user:allow',
     name: userForm.value.username,
@@ -95,9 +94,7 @@ function applyPresetToShare(path: string, preset: string) {
   }
   const current = selectedFolderPerms.value.get(path) || []
   const filtered = current.filter((e) => e.name !== userForm.value.username)
-  if (preset !== 'Sin acceso' || filtered.length > 0) {
-    filtered.push(entry)
-  }
+  filtered.push(entry)
   selectedFolderPerms.value.set(path, filtered)
   selectedFolderPerms.value = new Map(selectedFolderPerms.value)
 }
@@ -134,34 +131,37 @@ async function finish() {
 
   try {
     await invoke('create_user', { input: userForm.value })
+    const aclErrors: string[] = []
 
     for (const group of selectedGroups.value) {
       if (group === 'users') continue
       try {
         await invoke('add_group_member', { groupname: group, username: userForm.value.username })
       } catch (e: any) {
-        console.error(`No se pudo anadir a ${group}:`, e)
+        aclErrors.push(`Grupo ${group}: ${String(e)}`)
       }
     }
 
-    const paths: string[] = []
-    const allEntries: AclEntry[] = []
+    // Aplicar por carpeta: cada path recibe SOLO sus propias entries.
+    // Antes se aplanaba todo en un unico apply_acl y cada carpeta acababa
+    // con los permisos de todas las demas.
     for (const [path, entries] of selectedFolderPerms.value) {
-      paths.push(path)
-      allEntries.push(...entries)
-    }
-
-    if (paths.length > 0 && allEntries.length > 0) {
+      if (entries.length === 0) continue
       try {
-        await invoke('apply_acl', {
-          request: { paths, entries: allEntries, recursive: false }
+        const applied = await invoke<ApplyResult>('apply_acl', {
+          request: { paths: [path], entries, recursive: false }
         })
+        if (!applied.success) aclErrors.push(...applied.errors)
       } catch (e: any) {
-        console.error('Error aplicando permisos:', e)
+        aclErrors.push(`${path}: ${String(e)}`)
       }
     }
 
-    success.value = `Usuario ${userForm.value.username} creado correctamente. Password: ${passwordGen.value}`
+    passwordGen.value = userForm.value.password
+    success.value = `Usuario ${userForm.value.username} creado.`
+    if (aclErrors.length > 0) {
+      error.value = `El usuario está creado, pero faltan asignaciones: ${aclErrors.join(' · ')}`
+    }
     step.value = 4
   } catch (e: any) {
     error.value = String(e)
@@ -307,6 +307,7 @@ function restart() {
 
   <!-- Step 4: Done -->
   <div v-if="step === 4" class="card">
+    <button class="btn btn-primary" @click="router.push({ name: 'compare', query: { target: userForm.username } })">Copiar permisos de otro usuario →</button>
     <div class="empty-state" style="padding: 30px;">
       <div style="font-size: 48px; margin-bottom: 12px;">&#10004;</div>
       <h2 style="color: var(--success); margin-bottom: 8px;">Usuario creado</h2>

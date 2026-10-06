@@ -6,6 +6,7 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
     create_schema(&conn)?;
     migrate_schema(&conn)?;
+    crate::nas_config::migrate(&conn)?;
     Ok(conn)
 }
 
@@ -80,6 +81,7 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE connections ADD COLUMN key_path TEXT",
         [],
     );
+    conn.execute_batch("CREATE INDEX IF NOT EXISTS audit_connection_time ON audit_logs(connection_name,timestamp); CREATE INDEX IF NOT EXISTS audit_action ON audit_logs(action);")?;
     Ok(())
 }
 
@@ -94,10 +96,12 @@ pub fn insert_connection(
     key_path: Option<&str>,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT OR REPLACE INTO connections (name, host, port, username, use_sudo, auth_method, key_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO connections (name, host, port, username, use_sudo, auth_method, key_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(name) DO UPDATE SET host=excluded.host, port=excluded.port, username=excluded.username, use_sudo=excluded.use_sudo, auth_method=excluded.auth_method, key_path=excluded.key_path",
         rusqlite::params![name, host, port, username, use_sudo as i32, auth_method, key_path],
     )?;
-    Ok(conn.last_insert_rowid())
+    let id: i64 = conn.query_row("SELECT id FROM connections WHERE name=?1", [name], |row| row.get(0))?;
+    conn.execute("INSERT OR IGNORE INTO nas_configs(connection_id,content) VALUES (?1,?2)", rusqlite::params![id, serde_json::to_string(&crate::nas_config::NasConfig::default())?])?;
+    Ok(id)
 }
 
 pub fn list_connections(conn: &Connection) -> Result<Vec<crate::models::Connection>> {
@@ -156,6 +160,7 @@ pub fn delete_connection(conn: &Connection, id: i64) -> Result<()> {
     )?;
 
     conn.execute("DELETE FROM connections WHERE id = ?1", rusqlite::params![id])?;
+    let _ = conn.execute("DELETE FROM nas_configs WHERE connection_id = ?1", rusqlite::params![id]);
 
     if let Ok(entry) = keyring::Entry::new("syno-perm-manager", &name) {
         let _ = entry.delete_credential();
@@ -288,7 +293,7 @@ pub fn cache_acl(
 
 pub fn get_cached_acl(conn: &Connection, connection_name: &str, path: &str) -> Result<Option<String>> {
     let result = conn.query_row::<String, _, _>(
-        "SELECT content FROM acl_cache WHERE connection_name = ?1 AND path = ?2",
+        "SELECT content FROM acl_cache WHERE connection_name = ?1 AND path = ?2 AND cached_at >= datetime('now', '-5 minutes')",
         rusqlite::params![connection_name, path],
         |row| row.get(0),
     );

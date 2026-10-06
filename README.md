@@ -20,6 +20,29 @@ Synology ofrece una API REST (DSM API) para gestionar el NAS remotamente. Sin em
 
 ## Caracteristicas
 
+### Comparar y copiar permisos entre usuarios
+- Nueva sección **Comparar permisos**, accesible desde el menú, inicio, ficha de usuario y al finalizar un alta.
+- **1. Grupos:** tabla con pertenencia de origen y destino, resultado previsto y orden de aplicación (primero grupos, después carpetas).
+- **2. Carpetas específicas:** por cada carpeta, permisos manuales del usuario (`manual`), heredados de usuario (`inherited`), obtenidos por grupo (`group`) y de `everyone`, con explicación de cada letra `rwx...`, tipo `allow/deny`, flags y nivel de herencia.
+- **3. Cambios:** lista filtrable de altas/bajas exactas antes de aplicar.
+- **Añadir**: incorpora grupos y entradas que faltan, conservando las asignaciones del destino.
+- **Actualizar**: sustituye las ACL directas con el mismo tipo `allow/deny` y flags de herencia que las del origen; conserva las demás y añade grupos.
+- **Reemplazar**: iguala las pertenencias a grupos y las ACL directas del destino dentro de las carpetas elegidas; retira las adicionales.
+- Selección de carpetas compartidas, botón para seleccionarlas todas, rutas específicas de cualquier volumen y análisis recursivo opcional (hasta 5000 carpetas, máximo 100 raíces).
+- Vista previa obligatoria, planes de un solo uso que caducan a los 15 minutos, relectura completa antes de modificar y cancelación del análisis al cambiar de sección.
+- Registro del estado anterior en `user_sync_backup`, exportable como JSON desde Historial de cambios; resultados en `user_sync`.
+
+**Alcance:** copia usuarios locales existentes. Para un usuario nuevo, créalo primero con el asistente y pulsa **Copiar permisos de otro usuario**. La copia modifica exclusivamente las ACE directas del destino; las heredadas deben copiarse en el padre que las origina. Los grupos afectan a todo el NAS, aunque selecciones pocas carpetas. No se copian propietarios, ACL específicas de archivos, permisos de aplicaciones DSM ni configuración de cuentas. No es un cálculo de acceso efectivo de DSM.
+
+**Aplicación parcial:** SSH no ofrece una transacción que abarque todos los cambios. Se aplica en orden (grupos, luego carpetas hijas antes que padres), se detiene en el primer error y muestra cuántas operaciones terminaron; vuelve a comparar para comprobar el resultado o continuar. El respaldo de comparación permite recuperación manual, no tiene deshacer automático. Evita editar simultáneamente esos permisos desde DSM mientras se aplica el plan.
+
+### Interfaz y rendimiento
+- Nueva navegación con iconos, cabecera de conexión, panel de inicio y diseño común de tarjetas, tablas y formularios.
+- Temas claro/oscuro persistentes, navegación por teclado e indicadores de foco.
+- Lecturas SSH deduplicadas y cacheadas (30 s en interfaz, 5 min en ACL), sin reencolar al cambiar rápido de sección; los resultados obsoletos se descartan.
+- Comparaciones paginadas, filtro de carpetas y rutas canónicas deduplicadas.
+- Resolución de la ruta real de cada carpeta compartida mediante `synoshare --get`, sin asumir `/volume1`.
+
 ### Gestion de permisos
 - **Multi-seleccion en lote**: selecciona N carpetas y aplica los mismos permisos a todas a la vez
 - **Editor visual de ACL**: arbol de permisos con checkboxes padre/hijo y estado indeterminado
@@ -47,15 +70,18 @@ Synology ofrece una API REST (DSM API) para gestionar el NAS remotamente. Sin em
 - **Detalle de grupo**: GID, tipo, descripcion, miembros
 
 ### Auditoria y seguridad
-- **Logs de auditoria**: historial de cada cambio (permisos, usuarios, grupos) en SQLite
-- **Snapshot automatico**: backup de ACLs antes de cada cambio masivo
-- **Deshacer desde logs**: boton para restaurar el estado anterior de cualquier cambio
-- **Estadisticas**: tasa de exito, cambios totales, actividad reciente
+- **Historial con filtros**: búsqueda, conexión, acción, resultado y rango de fechas, con paginación en servidor.
+- **Detalle por operación**: contenido completo, snapshots asociados y exportación individual.
+- **Snapshots ACL**: previsualización antes de restaurar, confirmación obligatoria y restauración limitada a la conexión propietaria.
+- **Respaldos de comparación**: exportación JSON, reintento de comparación y recuperación manual documentada.
+- **Exportación de informes**: CSV/JSON del resultado filtrado (límite de 10.000 filas por exportación).
+- **Estadisticas**: tasa de exito, cambios totales, actividad reciente.
 
 ### Dashboard y configuracion
-- **Dashboard de inicio**: stats (usuarios, grupos, carpetas, cambios), actividad reciente, acciones rapidas
-- **Script pre-conexion**: ejecuta comandos antes de conectar (iniciar VPN, comprobar conectividad)
-- **Configuracion**: confirmar antes de aplicar, snapshot auto, timeout sudo, gestion de datos
+- **Dashboard de inicio**: stats (usuarios, grupos, carpetas, cambios), actividad reciente, acciones rapidas.
+- **Conexiones NAS independientes**: cada conexión guarda rutas de binarios, volumen de referencia, exclusiones, timeout SSH/keepalive y script previo (VPN). Se aplica al reconectar; exportable sin credenciales ni scripts.
+- **Script por conexión**: se ejecuta con tiempo límite de 120 s antes de conectar; si falla, la conexión se bloquea.
+- **Configuracion**: tema, retención, gestión de datos y sección **Acerca de** con versión, origen del proyecto y autor.
 
 ## Instalacion
 
@@ -162,28 +188,11 @@ La primera vez que conectas a un NAS, la app guarda el fingerprint SHA256 de su 
 
 Todos los inputs que van al NAS (paths, usernames, passwords, group names) se escapan con `shell_escape()` usando el metodo POSIX estandar (`'"'"'`). Esto previene inyeccion de comandos via SSH.
 
-### Defense-in-depth contra troyanos
+### Límites de la protección local
 
-Si tienes un troyano en el PC, podria robar las credenciales del keyring. Para mitigar esto, la app soporta **claves SSH restringidas**:
+El keyring protege las credenciales en reposo, pero no frente a malware ejecutado como el mismo usuario. La app necesita ejecutar comandos SSH y, si está configurado, `sudo`. Una cadena de comandos unidos por `||` en `authorized_keys` no constituye un despachador seguro ni es compatible con este protocolo. No se incluye un wrapper de comandos restringidos para el NAS.
 
-1. Genera una clave SSH dedicada en tu PC:
-   ```powershell
-   ssh-keygen -t ed25519 -f %USERPROFILE%\.ssh\syno_key
-   ```
-
-2. Copia la clave publica al NAS:
-   ```powershell
-   scp %USERPROFILE%\.ssh\syno_key.pub user@NAS_IP:/tmp/
-   ```
-
-3. En el NAS, edita `~/.ssh/authorized_keys` y restringe la clave:
-   ```
-   command="/usr/syno/bin/synoacltool || /usr/syno/sbin/synouser || /usr/syno/sbin/synogroup || /usr/syno/sbin/synoshare",no-pty,no-port-forwarding,no-X11-forwarding ssh-ed25519 AAAA... tu_email
-   ```
-
-**Resultado:** aunque un troyano robe la clave SSH completa, solo puede ejecutar `synoacltool`, `synouser`, `synogroup` y `synoshare`. No puede abrir shell, no puede leer archivos arbitrarios, no puede instalar malware, no puede hacer `rm -rf`.
-
-4. Restringe SSH por IP en DSM: Panel de Control → Terminal y SNMP → Permitir SSH solo desde tu IP/subred.
+La primera conexión usa confianza en el primer uso (TOFU); las conexiones posteriores, incluidas las reconexiones automáticas, validan la huella registrada.
 
 ### Script pre-conexion (VPN)
 
@@ -199,6 +208,11 @@ ping -n 1 192.168.1.100 >nul 2>&1 || (start "" "C:\Program Files (x86)\Sophos\Co
 ```
 
 El script se guarda en SQLite y se ejecuta con `cmd /C` antes de cada conexion.
+La importación de configuraciones omite `startup_script`, tanto en `settings` como en la raíz del JSON. Debe configurarse manualmente en este equipo.
+
+### Revisión de seguridad
+
+Consulta [SECURITY-REVIEW.md](SECURITY-REVIEW.md) para los fallos corregidos, comprobaciones y límites de la revisión. Las nuevas altas ya no incluyen contraseñas en la descripción del usuario. Si usaste versiones anteriores, revisa las descripciones existentes y cambia las contraseñas que hayan quedado expuestas: la actualización no modifica cuentas históricas.
 
 ### Auditoria completa
 
@@ -243,7 +257,7 @@ Cada cambio de permisos guarda un snapshot de las ACLs anteriores, permitiendo d
 - [ ] Plantillas de permisos guardadas y reutilizables
 - [ ] Comparar permisos entre 2 NAS
 - [ ] Sincronizacion periodica (anti-deriva)
-- [ ] Tema claro/oscuro
+- [x] Tema claro/oscuro
 - [ ] Atajos de teclado (Ctrl+Z deshacer, Ctrl+F buscar)
 - [ ] Exportar/importar configuracion completa (JSON)
 

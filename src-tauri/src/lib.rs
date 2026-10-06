@@ -1,7 +1,10 @@
 mod commands;
+mod comparison;
 mod config;
 mod db;
 mod models;
+mod nas_config;
+mod history;
 mod ssh;
 mod syno;
 
@@ -21,6 +24,8 @@ pub fn run() {
     let app_config = config::load_config(&conn);
 
     let state = AppState {
+        comparison_scan: StdMutex::new(None),
+        comparison: StdMutex::new(None),
         ssh: SshState {
             client: tokio::sync::Mutex::new(None),
             connection_name: tokio::sync::Mutex::new(String::new()),
@@ -33,7 +38,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
+            comparison::compare_users,
+            comparison::cancel_comparison,
+            comparison::apply_user_comparison,
             commands::test_connection,
+            nas_config::get_nas_config,
+            nas_config::save_nas_config,
             commands::save_connection,
             commands::list_connections,
             commands::delete_connection,
@@ -47,6 +57,10 @@ pub fn run() {
             commands::dry_run,
             commands::apply_acl,
             commands::list_logs,
+            history::query_history,
+            history::get_history_detail,
+            history::export_history,
+            history::preview_snapshot,
             commands::list_snapshots,
             commands::restore_snapshot,
             commands::analyze_perms,
@@ -66,6 +80,7 @@ pub fn run() {
             commands::get_perm_matrix,
             commands::clear_logs,
             commands::clear_snapshots,
+            commands::get_db_stats,
             commands::get_app_setting,
             commands::set_app_setting,
             commands::run_startup_script,

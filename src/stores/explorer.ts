@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { cachedRead } from '../utils/readCache'
+import { useConnectionStore } from './connection'
 import type {
   ShareFolder, DirNode, AclEntry, AclDiff, ApplyResult, ApplyRequest,
   PathAcl, PermColor, SelectedPrincipal,
@@ -16,6 +18,11 @@ export interface TreeNode {
 }
 
 export const useExplorerStore = defineStore('explorer', () => {
+  const connection = useConnectionStore()
+  let epoch = 0
+  let sharesRequest: Promise<void> | null = null
+  let identityRequest: Promise<void> | null = null
+  let sharesLoaded = 0
   const shares = ref<ShareFolder[]>([])
   const tree = ref<TreeNode[]>([])
   const selectedPaths = ref<Set<string>>(new Set())
@@ -34,11 +41,29 @@ export const useExplorerStore = defineStore('explorer', () => {
   const overrides = ref<Set<string>>(new Set())
   const onlyConflicts = ref(false)
 
-  async function loadShares() {
+  watch(() => connection.sessionVersion, () => {
+    epoch++; sharesRequest = null; identityRequest = null; sharesLoaded = 0
+    tree.value = []; shares.value = []; users.value = []; groups.value = []
+    clearSelection(); clearPermColors(); currentAcl.value = []; diffs.value = []
+    loading.value = false; analyzing.value = false
+  }, { flush: 'sync' })
+
+  async function loadShares(force = false): Promise<void> {
+    if (sharesRequest) return sharesRequest
+    if (!force && sharesLoaded > Date.now() - 30_000) return
+    const version = epoch
+    const request = fetchShares(force, version)
+    sharesRequest = request
+    try { await request } finally { if (sharesRequest === request) sharesRequest = null }
+  }
+  async function fetchShares(force: boolean, version: number) {
     loading.value = true
     error.value = ''
     try {
-      shares.value = await invoke<ShareFolder[]>('list_shares')
+      const data = await cachedRead<ShareFolder[]>('list_shares', undefined, force)
+      if (version !== epoch) return
+      shares.value = data
+      sharesLoaded = Date.now()
       tree.value = shares.value.map((s) => ({
         name: s.name,
         path: s.path,
@@ -50,11 +75,13 @@ export const useExplorerStore = defineStore('explorer', () => {
     } catch (e: any) {
       error.value = String(e)
     } finally {
-      loading.value = false
+      if (version === epoch) loading.value = false
     }
   }
 
   async function expandNode(node: TreeNode) {
+    if (node.loading) return
+    const version = epoch
     if (node.loaded) {
       node.expanded = !node.expanded
       return
@@ -62,6 +89,7 @@ export const useExplorerStore = defineStore('explorer', () => {
     node.loading = true
     try {
       const dirs = await invoke<DirNode[]>('list_dirs', { path: node.path })
+      if (version !== epoch) return
       node.children = dirs.map((d) => ({
         name: d.name,
         path: d.path,
@@ -104,13 +132,21 @@ export const useExplorerStore = defineStore('explorer', () => {
     selectedPaths.value = new Set()
   }
 
-  async function loadUsersGroups() {
+  async function loadUsersGroups(force = false): Promise<void> {
+    if (identityRequest) return identityRequest
+    const version = epoch
+    const request = fetchUsersGroups(force, version)
+    identityRequest = request
+    try { await request } finally { if (identityRequest === request) identityRequest = null }
+  }
+  async function fetchUsersGroups(force: boolean, version: number) {
     error.value = ''
     try {
       const [u, g] = await Promise.all([
-        invoke<string[]>('list_users'),
-        invoke<string[]>('list_groups'),
+        cachedRead<string[]>('list_users', undefined, force),
+        cachedRead<string[]>('list_groups', undefined, force),
       ])
+      if (version !== epoch) return
       users.value = u
       groups.value = g
     } catch (e: any) {
@@ -153,6 +189,12 @@ export const useExplorerStore = defineStore('explorer', () => {
     try {
       const request: ApplyRequest = { paths, entries, recursive }
       const result = await invoke<ApplyResult>('apply_acl', { request })
+      clearPermColors()
+      currentAcl.value = []
+      diffs.value = []
+      if (result.success) {
+        clearSelection()
+      }
       return result
     } catch (e: any) {
       error.value = String(e)
@@ -235,6 +277,8 @@ export const useExplorerStore = defineStore('explorer', () => {
   }
 
   async function analyzePerms() {
+    if (analyzing.value) return
+    const version = epoch
     if (!selectedPrincipal.value) return
     analyzing.value = true
     error.value = ''
@@ -246,6 +290,7 @@ export const useExplorerStore = defineStore('explorer', () => {
 
     try {
       const results = await invoke<PathAcl[]>('analyze_perms', { paths: visiblePaths })
+      if (version !== epoch) return
       const colors = new Map<string, PermColor>()
       for (const result of results) {
         const color = computeColor(result.entries, selectedPrincipal.value!)

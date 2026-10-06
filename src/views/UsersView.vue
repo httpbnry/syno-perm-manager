@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { useRouter } from 'vue-router'
+import { generatePassword } from '../utils/password'
 import { useExplorerStore } from '../stores/explorer'
 import type { UserDetail, GroupDetail, CreateUserInput, CreateGroupInput } from '../types'
 
 const explorerStore = useExplorerStore()
+const router = useRouter()
 
 const activeTab = ref<'users' | 'groups'>('users')
 const searchQuery = ref('')
@@ -22,6 +25,7 @@ const showAddMember = ref(false)
 const passwordTarget = ref('')
 const newPassword = ref('')
 const newMemberName = ref('')
+let detailVersion = 0
 
 const newUserForm = ref<CreateUserInput>({
   username: '', password: '', full_name: '', expired: false, mail: '', privilege: 0,
@@ -36,15 +40,6 @@ function generateUsername(fullName: string): string {
   const firstInitial = parts[0].charAt(0).toUpperCase()
   const lastName = parts[parts.length - 1]
   return firstInitial + lastName.charAt(0).toUpperCase() + lastName.slice(1).toLowerCase()
-}
-
-function generatePassword(length: number = 12): string {
-  const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#%'
-  let pwd = ''
-  for (let i = 0; i < length; i++) {
-    pwd += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return pwd
 }
 
 function todayDDMMYY(): string {
@@ -65,14 +60,14 @@ function onFullNameInput() {
     newUserForm.value.password = generatePassword()
   }
 
-  newUserForm.value.full_name = `${fullName} Alta ${todayDDMMYY()} ${newUserForm.value.password}`
+  newUserForm.value.full_name = `${fullName} Alta ${todayDDMMYY()}`
 }
 
 function regenPassword() {
   newUserForm.value.password = generatePassword()
   if (autoFullName.value.trim()) {
     const fullName = autoFullName.value.trim()
-    newUserForm.value.full_name = `${fullName} Alta ${todayDDMMYY()} ${newUserForm.value.password}`
+    newUserForm.value.full_name = `${fullName} Alta ${todayDDMMYY()}`
   }
 }
 
@@ -93,28 +88,32 @@ onMounted(() => {
 })
 
 async function selectUser(name: string) {
+  const version = ++detailVersion
   loadingDetail.value = true
   selectedGroup.value = null
   error.value = ''
   try {
-    selectedUser.value = await invoke<UserDetail>('get_user_detail', { username: name })
+    const detail = await invoke<UserDetail>('get_user_detail', { username: name })
+    if (version === detailVersion) selectedUser.value = detail
   } catch (e: any) {
     error.value = String(e)
   } finally {
-    loadingDetail.value = false
+    if (version === detailVersion) loadingDetail.value = false
   }
 }
 
 async function selectGroup(name: string) {
+  const version = ++detailVersion
   loadingDetail.value = true
   selectedUser.value = null
   error.value = ''
   try {
-    selectedGroup.value = await invoke<GroupDetail>('get_group_detail', { groupname: name })
+    const detail = await invoke<GroupDetail>('get_group_detail', { groupname: name })
+    if (version === detailVersion) selectedGroup.value = detail
   } catch (e: any) {
     error.value = String(e)
   } finally {
-    loadingDetail.value = false
+    if (version === detailVersion) loadingDetail.value = false
   }
 }
 
@@ -127,7 +126,7 @@ async function createUser() {
     showCreateUser.value = false
     autoFullName.value = ''
     newUserForm.value = { username: '', password: '', full_name: '', expired: false, mail: '', privilege: 0 }
-    await explorerStore.loadUsersGroups()
+    await explorerStore.loadUsersGroups(true)
   } catch (e: any) {
     error.value = String(e)
   }
@@ -141,7 +140,7 @@ async function removeUser(name: string) {
     await invoke('delete_user', { usernames: [name] })
     successMsg.value = `Usuario ${name} eliminado`
     selectedUser.value = null
-    await explorerStore.loadUsersGroups()
+    await explorerStore.loadUsersGroups(true)
   } catch (e: any) {
     error.value = String(e)
   }
@@ -169,7 +168,7 @@ async function renameUser(oldName: string) {
     await invoke('rename_user', { oldName, newName })
     successMsg.value = `Usuario renombrado a ${newName}`
     selectedUser.value = null
-    await explorerStore.loadUsersGroups()
+    await explorerStore.loadUsersGroups(true)
   } catch (e: any) {
     error.value = String(e)
   }
@@ -183,7 +182,7 @@ async function createGroup() {
     successMsg.value = `Grupo ${newGroupForm.value.name} creado`
     showCreateGroup.value = false
     newGroupForm.value = { name: '', members: [] }
-    await explorerStore.loadUsersGroups()
+    await explorerStore.loadUsersGroups(true)
   } catch (e: any) {
     error.value = String(e)
   }
@@ -197,7 +196,7 @@ async function removeGroup(name: string) {
     await invoke('delete_group', { groupnames: [name] })
     successMsg.value = `Grupo ${name} eliminado`
     selectedGroup.value = null
-    await explorerStore.loadUsersGroups()
+    await explorerStore.loadUsersGroups(true)
   } catch (e: any) {
     error.value = String(e)
   }
@@ -242,7 +241,7 @@ async function renameGroup(oldName: string) {
     await invoke('rename_group', { oldName, newName })
     successMsg.value = `Grupo renombrado a ${newName}`
     selectedGroup.value = null
-    await explorerStore.loadUsersGroups()
+    await explorerStore.loadUsersGroups(true)
   } catch (e: any) {
     error.value = String(e)
   }
@@ -313,6 +312,7 @@ function openSetPassword(name: string) {
           <div class="card-title" style="margin: 0;">{{ selectedUser.name }}</div>
           <div class="btn-group">
             <button class="btn btn-secondary btn-sm" @click="openSetPassword(selectedUser.name)">Cambiar password</button>
+            <button class="btn btn-primary btn-sm" @click="router.push({ name: 'compare', query: { target: selectedUser.name } })">Comparar permisos</button>
             <button class="btn btn-secondary btn-sm" @click="renameUser(selectedUser.name)">Renombrar</button>
             <button class="btn btn-danger btn-sm" @click="removeUser(selectedUser.name)">Eliminar</button>
           </div>

@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 pub struct AppConfig {
     pub volume_path: String,
     pub synoacltool_path: String,
@@ -37,7 +35,7 @@ impl Default for AppConfig {
             password_length: 12,
             password_special_chars: true,
             username_format: "{first_initial}{last_name}".to_string(),
-            description_template: "{full_name} Alta {date} {password}".to_string(),
+            description_template: "{full_name} Alta {date}".to_string(),
             theme: "dark".to_string(),
             language: "es".to_string(),
         }
@@ -77,7 +75,7 @@ pub fn load_config(conn: &rusqlite::Connection) -> AppConfig {
     config.password_length = get_int(conn, "password_length", config.password_length as i64) as usize;
     config.password_special_chars = get_str(conn, "password_special_chars", "true") == "true";
     config.username_format = get_str(conn, "username_format", &config.username_format);
-    config.description_template = get_str(conn, "description_template", &config.description_template);
+    config.description_template = get_str(conn, "description_template", &config.description_template).replace("{password}", "").trim().to_string();
     config.theme = get_str(conn, "theme", &config.theme);
     config.language = get_str(conn, "language", &config.language);
 
@@ -90,5 +88,3 @@ pub fn load_config(conn: &rusqlite::Connection) -> AppConfig {
 
     config
 }
-
-pub type ConfigState = Mutex<AppConfig>;

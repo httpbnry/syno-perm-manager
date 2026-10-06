@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useConnectionStore } from '../stores/connection'
 import type { ConnectionInput } from '../types'
@@ -12,6 +12,8 @@ const testing = ref(false)
 const connecting = ref<number | null>(null)
 const testResult = ref<string>('')
 const testError = ref<string>('')
+let disposed = false
+onBeforeUnmount(() => { disposed = true })
 
 const form = ref<ConnectionInput>({
   name: '',
@@ -71,7 +73,7 @@ async function connect(id: number) {
   connecting.value = id
   const ok = await store.connect(id)
   connecting.value = null
-  if (ok) {
+  if (ok && !disposed) {
     router.push('/explorer')
   }
 }
@@ -195,12 +197,13 @@ async function remove(id: number) {
           </td>
           <td>
             <div class="btn-group">
-              <button class="btn btn-primary btn-sm" @click="connect(c.id!)" :disabled="connecting !== null">
+              <button class="btn btn-primary btn-sm" @click="connect(c.id!)" :disabled="store.connecting">
                 <span v-if="connecting === c.id" class="loading-spinner"></span>
                 <span v-if="connecting === c.id"> Conectando...</span>
                 <span v-else>Conectar</span>
               </button>
               <button class="btn btn-danger btn-sm" @click="remove(c.id!)">Eliminar</button>
+              <button class="btn btn-secondary btn-sm" @click="router.push({ name: 'settings', query: { connection: c.id } })">Ajustes NAS</button>
             </div>
           </td>
         </tr>

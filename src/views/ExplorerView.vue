@@ -88,7 +88,7 @@ function clearAnalysis() {
           Refrescar cache
         </button>
         <button v-if="store.selectedPrincipal" class="btn btn-secondary btn-sm" @click="clearAnalysis">
-          Qitar analisis
+          Quitar análisis
         </button>
       </div>
     </div>
@@ -96,7 +96,7 @@ function clearAnalysis() {
     <div style="margin-top: 10px; display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;">
       <div class="form-group" style="flex: 1; min-width: 200px;">
         <label>Buscar usuario o grupo</label>
-        <input v-model="principalSearch" placeholder="Escribre para filtrar..." />
+        <input v-model="principalSearch" placeholder="Escribe para filtrar..." />
       </div>
       <button
         class="btn btn-primary"
@@ -174,7 +174,7 @@ function clearAnalysis() {
       <div class="btn-group">
         <button class="btn btn-secondary btn-sm" @click="selectAll">Seleccionar todo</button>
         <button class="btn btn-secondary btn-sm" @click="clearAll">Limpiar</button>
-        <button class="btn btn-secondary btn-sm" @click="store.loadShares()">Actualizar</button>
+        <button class="btn btn-secondary btn-sm" :disabled="store.loading" @click="store.loadShares(true)">Actualizar</button>
       </div>
     </div>
   </div>

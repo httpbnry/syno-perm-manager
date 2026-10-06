@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, nextTick } from 'vue'
 
 interface SubjectRef {
   type: 'user' | 'group'
@@ -30,6 +30,7 @@ const selectedSubjects = ref<SubjectRef[]>([])
 const subjectInput = ref('')
 const subjectType = ref<'user' | 'group'>('user')
 const showDropdown = ref(false)
+const subjectInputEl = ref<HTMLInputElement | null>(null)
 
 const availableOptions = computed(() => {
   return subjectType.value === 'group' ? props.groups : props.users
@@ -53,11 +54,20 @@ function addSubject(name: string) {
     selectedSubjects.value.push({ type: subjectType.value, name: clean })
   }
   subjectInput.value = ''
-  showDropdown.value = false
+  // Mantener el dropdown abierto para encadenar altas y reenfocar el input.
+  // Antes se cerraba con showDropdown=false y como el input ya tenia foco,
+  // el evento @focus no volvia a dispararse y habia que clicar fuera.
+  showDropdown.value = true
+  nextTick(() => subjectInputEl.value?.focus())
 }
 
 function removeSubject(idx: number) {
   selectedSubjects.value.splice(idx, 1)
+}
+
+function onSubjectTypeChange() {
+  showDropdown.value = true
+  nextTick(() => subjectInputEl.value?.focus())
 }
 
 function onSubjectInputKeydown(e: KeyboardEvent) {
@@ -68,6 +78,8 @@ function onSubjectInputKeydown(e: KeyboardEvent) {
     } else if (subjectInput.value.trim()) {
       addSubject(subjectInput.value)
     }
+  } else if (e.key === 'Escape') {
+    showDropdown.value = false
   }
 }
 
@@ -231,14 +243,16 @@ defineExpose({ reset, permGroups, selectedSubjects })
       <div class="compact-section">
         <div class="compact-label">Usuarios / Grupos</div>
         <div class="compact-controls">
-          <select v-model="subjectType" class="select-mini select-type">
+          <select v-model="subjectType" class="select-mini select-type" @change="onSubjectTypeChange">
             <option value="user">Usuario</option>
             <option value="group">Grupo</option>
           </select>
           <div style="position: relative; flex: 1; min-width: 0;">
             <input
+              ref="subjectInputEl"
               v-model="subjectInput"
               @focus="showDropdown = true"
+              @click="showDropdown = true"
               @blur="onInputBlur"
               @keydown="onSubjectInputKeydown"
               :placeholder="subjectType === 'group' ? 'Buscar grupo...' : 'Buscar usuario...'"

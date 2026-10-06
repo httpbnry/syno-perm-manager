@@ -1,477 +1,84 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
-import type { StartupResult, AppConfig } from '../types'
-
-const activeSection = ref<'general' | 'nas' | 'startup' | 'security' | 'data'>('general')
-
-const startupScript = ref('')
-const testingScript = ref(false)
-const testResult = ref<StartupResult | null>(null)
-const scriptSaved = ref(false)
-
-const config = ref<AppConfig>({
-  volume_path: '/volume1',
-  synoacltool_path: '/usr/syno/bin/synoacltool',
-  synoshare_path: '/usr/syno/sbin/synoshare',
-  synouser_path: '/usr/syno/sbin/synouser',
-  synogroup_path: '/usr/syno/sbin/synogroup',
-  find_path: '/bin/find',
-  excluded_folders: '@eaDir, #recycle',
-  ssh_timeout_secs: 600,
-  keepalive_secs: 15,
-  log_retention_days: 90,
-  snapshot_retention_count: 100,
-  password_length: 12,
-  password_special_chars: true,
-  username_format: '{first_initial}{last_name}',
-  description_template: '{full_name} Alta {date} {password}',
-  theme: 'dark',
-  language: 'es',
-})
-
-const configSaved = ref(false)
-const configLoading = ref(false)
-
-const dbStats = ref({ logs: 0, snapshots: 0 })
-
+import { getVersion } from '@tauri-apps/api/app'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import NasSettings from '../components/NasSettings.vue'
+import type { AppConfig } from '../types'
+const route = useRoute()
+const section = ref(route.query.connection ? 'nas' : 'general')
+const config = ref<AppConfig | null>(null)
+const stats = ref({ logs: 0, snapshots: 0 })
+const error = ref('')
+const message = ref('')
+const busy = ref(false)
+const version = ref('1.0.0')
+const sections = [{ id: 'general', label: 'General' }, { id: 'nas', label: 'Conexiones NAS' }, { id: 'data', label: 'Datos' }, { id: 'about', label: 'Acerca de / About' }]
 onMounted(async () => {
   try {
-    const c = await invoke<AppConfig>('get_config')
-    config.value = c
-  } catch {}
-  try {
-    const logs = await invoke<any[]>('list_logs', { limit: 999999 })
-    dbStats.value.logs = logs.length
-  } catch {}
-  try {
-    const snaps = await invoke<any[]>('list_snapshots', { limit: 999999 })
-    dbStats.value.snapshots = snaps.length
-  } catch {}
-  try {
-    const script = await invoke<string | null>('get_app_setting', { key: 'startup_script' })
-    if (script) startupScript.value = script
-  } catch {}
+    const [c, s, v] = await Promise.all([invoke<AppConfig>('get_config'), invoke<typeof stats.value>('get_db_stats'), getVersion()])
+    config.value = c; stats.value = s; version.value = v
+  } catch (e) { error.value = String(e) }
 })
-
-async function saveConfig() {
-  configLoading.value = true
-  try {
-    await invoke('save_config', { dto: config.value })
-    document.documentElement.setAttribute('data-theme', config.value.theme)
-    configSaved.value = true
-    setTimeout(() => { configSaved.value = false }, 2000)
-  } catch (e: any) {
-    alert(String(e))
-  } finally {
-    configLoading.value = false
-  }
+async function save() {
+  if (!config.value || busy.value) return
+  busy.value = true; error.value = ''; message.value = ''
+  try { await invoke('save_config', { dto: config.value }); document.documentElement.setAttribute('data-theme', config.value.theme); message.value = 'Preferencias guardadas.' }
+  catch (e) { error.value = String(e) } finally { busy.value = false }
 }
-
-async function saveStartupScript() {
-  try {
-    await invoke('set_app_setting', { key: 'startup_script', value: startupScript.value })
-    scriptSaved.value = true
-    setTimeout(() => { scriptSaved.value = false }, 2000)
-  } catch (e: any) { alert(String(e)) }
+async function clear(command: string, label: string) {
+  if (!confirm(`¿${label}? Esta acción no se puede deshacer.`)) return
+  try { await invoke(command); stats.value = await invoke('get_db_stats'); message.value = 'Operación completada.' }
+  catch (e) { error.value = String(e) }
 }
-
-async function testStartupScript() {
-  if (!startupScript.value.trim()) return
-  testingScript.value = true
-  testResult.value = null
-  try {
-    testResult.value = await invoke<StartupResult>('test_startup_script', { script: startupScript.value })
-  } catch (e: any) {
-    testResult.value = { ran: true, output: String(e), success: false }
-  } finally { testingScript.value = false }
-}
-
-async function clearStartupScript() {
-  startupScript.value = ''
-  testResult.value = null
-  try { await invoke('set_app_setting', { key: 'startup_script', value: '' }) } catch {}
-}
-
-async function clearLogs() {
-  if (!confirm('Borrar todos los logs?')) return
-  try { await invoke('clear_logs'); dbStats.value.logs = 0 } catch (e: any) { alert(String(e)) }
-}
-
 async function exportConfig() {
   try {
-    const json = await invoke<string>('export_config')
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `syno-perm-config-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  } catch (e: any) { alert(String(e)) }
+    const data = await invoke<string>('export_config')
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
+    const link = document.createElement('a'); link.href = url; link.download = 'syno-perm-config.json'; link.click(); URL.revokeObjectURL(url)
+  } catch (e) { error.value = String(e) }
 }
-
-async function importConfig() {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.json'
-  input.onchange = async () => {
-    const file = input.files?.[0]
-    if (!file) return
-    const text = await file.text()
-    try {
-      await invoke('import_config', { json: text })
-      alert('Configuracion importada. Reinicia la app para aplicar.')
-    } catch (e: any) { alert(String(e)) }
-  }
-  input.click()
+async function importConfig(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try { await invoke('import_config', { json: await file.text() }); message.value = 'Configuración importada. Se han omitido los scripts de inicio. Reinicia la aplicación.' }
+  catch (e) { error.value = String(e) } finally { input.value = '' }
 }
-
-async function clearSnapshots() {
-  if (!confirm('Borrar todos los snapshots?')) return
-  try { await invoke('clear_snapshots'); dbStats.value.snapshots = 0 } catch (e: any) { alert(String(e)) }
-}
-
-async function clearCache() {
-  try { await invoke('clear_acl_cache') } catch (e: any) { alert(String(e)) }
-}
-
-watch(() => config.value.theme, (newTheme) => {
-  document.documentElement.setAttribute('data-theme', newTheme)
-})
+async function github() { try { await openUrl('https://github.com/httpbnry') } catch (e) { error.value = String(e) } }
 </script>
-
 <template>
-  <div class="view-header">
-    <h1>Configuracion</h1>
-    <p>Ajustes de la aplicacion y del NAS</p>
-  </div>
-
-  <div class="card" style="padding: 0 14px 10px;">
-    <div style="display: flex; gap: 4px; padding: 10px 0; flex-wrap: wrap;">
-      <button class="btn btn-sm" :class="activeSection === 'general' ? 'btn-primary' : 'btn-secondary'" @click="activeSection = 'general'">General</button>
-      <button class="btn btn-sm" :class="activeSection === 'nas' ? 'btn-primary' : 'btn-secondary'" @click="activeSection = 'nas'">NAS</button>
-      <button class="btn btn-sm" :class="activeSection === 'startup' ? 'btn-primary' : 'btn-secondary'" @click="activeSection = 'startup'">Inicio</button>
-      <button class="btn btn-sm" :class="activeSection === 'security' ? 'btn-primary' : 'btn-secondary'" @click="activeSection = 'security'">Seguridad</button>
-      <button class="btn btn-sm" :class="activeSection === 'data' ? 'btn-primary' : 'btn-secondary'" @click="activeSection = 'data'">Datos</button>
-    </div>
-  </div>
-
-  <!-- GENERAL -->
-  <div v-if="activeSection === 'general'" class="card">
-    <div class="card-title">Preferencias generales</div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Longitud de password generada</div>
-        <div class="setting-desc">Numero de caracteres de las passwords aleatorias</div>
-      </div>
-      <input v-model.number="config.password_length" type="number" min="6" max="32" class="input-mini" style="width: 80px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Caracteres especiales en password</div>
-        <div class="setting-desc">Incluye !@#% en las passwords generadas</div>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" v-model="config.password_special_chars" @change="saveConfig" />
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Formato de username</div>
-        <div class="setting-desc">Como se genera el usuario desde el nombre completo</div>
-      </div>
-      <input v-model="config.username_format" class="input-mini" style="width: 240px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Plantilla de descripcion</div>
-        <div class="setting-desc">Variables: {full_name} {date} {password}</div>
-      </div>
-      <input v-model="config.description_template" class="input-mini" style="width: 280px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Tema</div>
-        <div class="setting-desc">Apariencia de la aplicacion</div>
-      </div>
-      <select v-model="config.theme" class="select-mini" @change="saveConfig">
-        <option value="dark">Oscuro</option>
-        <option value="light">Claro</option>
-      </select>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Idioma</div>
-        <div class="setting-desc">Idioma de la interfaz</div>
-      </div>
-      <select v-model="config.language" class="select-mini" @change="saveConfig">
-        <option value="es">Espanol</option>
-        <option value="en">English</option>
-      </select>
-    </div>
-  </div>
-
-  <!-- NAS -->
-  <div v-if="activeSection === 'nas'" class="card">
-    <div class="card-title">Configuracion del NAS</div>
-    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
-      Ajusta las rutas si tu Synology tiene una estructura distinta o usa volumes diferentes.
-    </p>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Volume base</div>
-        <div class="setting-desc">Ruta del volume principal (ej: /volume1, /volume2, /volumeUSB1)</div>
-      </div>
-      <input v-model="config.volume_path" class="input-mini" style="width: 200px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Ruta synoacltool</div>
-        <div class="setting-desc">Binario de gestion de ACLs</div>
-      </div>
-      <input v-model="config.synoacltool_path" class="input-mini" style="width: 240px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Ruta synoshare</div>
-        <div class="setting-desc">Binario de carpetas compartidas</div>
-      </div>
-      <input v-model="config.synoshare_path" class="input-mini" style="width: 240px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Ruta synouser</div>
-        <div class="setting-desc">Binario de usuarios</div>
-      </div>
-      <input v-model="config.synouser_path" class="input-mini" style="width: 240px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Ruta synogroup</div>
-        <div class="setting-desc">Binario de grupos</div>
-      </div>
-      <input v-model="config.synogroup_path" class="input-mini" style="width: 240px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Ruta find</div>
-        <div class="setting-desc">Binario para listar carpetas</div>
-      </div>
-      <input v-model="config.find_path" class="input-mini" style="width: 200px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Carpetas excluidas</div>
-        <div class="setting-desc">Separadas por coma. Estas carpetas no aparecen en el arbol</div>
-      </div>
-      <input v-model="config.excluded_folders" class="input-mini" style="width: 240px;" @change="saveConfig" />
-    </div>
-
-    <div class="btn-group" style="margin-top: 14px;">
-      <button class="btn btn-primary" @click="saveConfig" :disabled="configLoading">
-        <span v-if="configSaved" style="color: var(--success);">&#10003; Guardado</span>
-        <span v-else>Guardar configuracion</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- INICIO -->
-  <div v-if="activeSection === 'startup'" class="card">
-    <div class="card-title">Script de inicio (pre-conexion)</div>
-    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-      Se ejecuta antes de conectar al NAS. Util para iniciar VPN, comprobar conectividad, etc.
-    </p>
-
-    <div class="form-group">
-      <label>Comando (se ejecuta con cmd /C)</label>
-      <textarea v-model="startupScript" rows="4" class="script-textarea"
-        placeholder="C:\PROGRA~2\Sophos\Connect\sccli.exe enable -n tu_conexion_vpn"></textarea>
-    </div>
-
-    <div class="alert alert-info" style="margin-bottom: 12px; font-size: 12px;">
-      <strong>Ejemplos:</strong><br>
-      <code>C:\PROGRA~2\Sophos\Connect\sccli.exe enable -n tu_conexion_vpn</code> - Sophos VPN<br>
-      <code>ping -n 1 192.168.1.100 &gt;nul 2&gt;&amp;1 || echo NAS no alcanzable</code> - Comprobar<br>
-      <code>timeout /t 10 /nobreak</code> - Esperar 10s<br>
-      <code>net use Z: \\192.168.1.100\share</code> - Montar unidad
-    </div>
-
-    <div class="btn-group">
-      <button class="btn btn-primary" @click="saveStartupScript">
-        <span v-if="scriptSaved" style="color: var(--success);">&#10003;</span>
-        Guardar
-      </button>
-      <button class="btn btn-secondary" @click="testStartupScript" :disabled="testingScript || !startupScript.trim()">
-        <span v-if="testingScript" class="loading-spinner"></span>
-        Probar
-      </button>
-      <button class="btn btn-danger btn-sm" @click="clearStartupScript" :disabled="!startupScript.trim()">Borrar</button>
-    </div>
-
-    <div v-if="testResult" style="margin-top: 12px;">
-      <div :class="testResult.success ? 'alert alert-success' : 'alert alert-error'" style="font-size: 12px;">
-        <strong>{{ testResult.success ? 'Ejecutado correctamente' : 'Error' }}</strong>
-        <pre style="margin-top: 6px; white-space: pre-wrap; font-size: 11px; max-height: 200px; overflow-y: auto;">{{ testResult.output }}</pre>
-      </div>
-    </div>
-  </div>
-
-  <!-- SEGURIDAD -->
-  <div v-if="activeSection === 'security'" class="card">
-    <div class="card-title">Seguridad</div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">SSH timeout (segundos)</div>
-        <div class="setting-desc">Tiempo maximo de inactividad antes de cerrar la conexion</div>
-      </div>
-      <input v-model.number="config.ssh_timeout_secs" type="number" min="60" max="3600" class="input-mini" style="width: 80px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Keepalive (segundos)</div>
-        <div class="setting-desc">Intervalo de paquetes keepalive para mantener la conexion</div>
-      </div>
-      <input v-model.number="config.keepalive_secs" type="number" min="5" max="120" class="input-mini" style="width: 80px;" @change="saveConfig" />
-    </div>
-
-    <div class="alert alert-warning" style="margin-top: 16px; font-size: 12px;">
-      <strong>Estado de seguridad:</strong>
-      <ul style="margin: 8px 0 0 16px;">
-        <li>Credenciales en Windows Credential Manager (no texto plano)</li>
-        <li>Host key verification en SQLite (proteccion MITM)</li>
-        <li>Shell escaping en todos los comandos SSH</li>
-        <li>Password via stdin del canal SSH (no visible en ps)</li>
-        <li>Soporte de clave SSH restringida (defense-in-depth)</li>
-        <li>SQLite en modo WAL</li>
-      </ul>
-    </div>
-  </div>
-
-  <!-- DATOS -->
-  <div v-if="activeSection === 'data'" class="card">
-    <div class="card-title">Gestion de datos</div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Retencion de logs (dias)</div>
-        <div class="setting-desc">Logs mas antiguos se borran automaticamente</div>
-      </div>
-      <input v-model.number="config.log_retention_days" type="number" min="1" max="365" class="input-mini" style="width: 80px;" @change="saveConfig" />
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Snapshots a mantener</div>
-        <div class="setting-desc">Numero maximo de snapshots de ACL guardados</div>
-      </div>
-      <input v-model.number="config.snapshot_retention_count" type="number" min="10" max="1000" class="input-mini" style="width: 80px;" @change="saveConfig" />
-    </div>
-
-    <div style="border-top: 1px solid var(--border); margin: 14px 0;"></div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Cache de ACLs</div>
-        <div class="setting-desc">Acelera el analisis de permisos</div>
-      </div>
-      <button class="btn btn-danger btn-sm" @click="clearCache">Limpiar cache</button>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Logs de auditoria ({{ dbStats.logs }})</div>
-        <div class="setting-desc">Historial de cambios</div>
-      </div>
-      <button class="btn btn-danger btn-sm" @click="clearLogs">Borrar logs</button>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Snapshots de ACL ({{ dbStats.snapshots }})</div>
-        <div class="setting-desc">Backups de permisos para deshacer</div>
-      </div>
-      <button class="btn btn-danger btn-sm" @click="clearSnapshots">Borrar snapshots</button>
-    </div>
-
-    <div style="border-top: 1px solid var(--border); margin: 14px 0;"></div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Exportar configuracion</div>
-        <div class="setting-desc">Descarga conexiones, ajustes y script de inicio en JSON</div>
-      </div>
-      <button class="btn btn-secondary btn-sm" @click="exportConfig">Exportar</button>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <div class="setting-label">Importar configuracion</div>
-        <div class="setting-desc">Restaura desde un archivo JSON exportado</div>
-      </div>
-      <button class="btn btn-secondary btn-sm" @click="importConfig">Importar</button>
-    </div>
-
-    <div class="alert alert-warning" style="margin-top: 14px; font-size: 12px;">
-      BD en <code>%APPDATA%\syno-perm-manager\syno-perm-manager.db</code>
-    </div>
-  </div>
+  <div class="view-header"><div class="eyebrow">PREFERENCIAS</div><h1>Configuración</h1><p>Personaliza la aplicación y configura cada NAS de forma independiente.</p></div>
+  <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div><div v-if="message" class="alert alert-success" role="status">{{ message }}</div>
+  <div class="card btn-group"><button v-for="s in sections" :key="s.id" class="btn" :class="section === s.id ? 'btn-primary' : 'btn-secondary'" @click="section = s.id">{{ s.label }}</button></div>
+  <NasSettings v-if="section === 'nas'" :initial-id="Number(route.query.connection) || undefined" />
+  <section v-if="section === 'general' && config" class="card">
+    <h2 class="card-title">Preferencias generales</h2>
+    <div class="form-group"><label for="theme">Apariencia</label><select id="theme" v-model="config.theme"><option value="dark">Oscuro</option><option value="light">Claro</option></select></div>
+    <p class="helper-text">Los ajustes del NAS, incluido el script de VPN y los parámetros SSH, se encuentran en «Conexiones NAS». La interfaz está disponible en español.</p>
+    <button class="btn btn-primary" :disabled="busy" @click="save">Guardar preferencias</button>
+  </section>
+  <section v-if="section === 'data'" class="card">
+    <h2 class="card-title">Datos locales y copias</h2>
+    <p class="helper-text">{{ stats.logs }} registros de auditoría · {{ stats.snapshots }} snapshots ACL. Los respaldos de comparación se exportan desde el historial.</p>
+    <div class="btn-group"><button class="btn btn-secondary" @click="clear('clear_acl_cache', 'Limpiar la caché ACL de la conexión activa')">Limpiar caché ACL</button><button class="btn btn-danger" @click="clear('clear_logs', 'Borrar todo el historial, incluidos los respaldos de comparación')">Borrar historial</button><button class="btn btn-danger" @click="clear('clear_snapshots', 'Borrar todos los snapshots ACL')">Borrar snapshots</button></div>
+    <h3 class="card-title" style="margin-top: 28px">Configuración portátil</h3><p class="helper-text">Exporta conexiones, perfiles NAS y preferencias. Las credenciales no se exportan y los scripts se omiten al importar.</p>
+    <div class="btn-group"><button class="btn btn-secondary" @click="exportConfig">Exportar configuración</button><label class="btn btn-secondary">Importar JSON<input type="file" accept=".json" class="file-input" @change="importConfig" /></label></div>
+  </section>
+  <section v-if="section === 'about'" class="card about">
+    <span class="brand-mark">S</span><div class="eyebrow">SYNOLOGY · USUARIOS · PERMISOS</div><h2>Syno Perm Manager</h2><p class="helper-text">Versión {{ version }}</p>
+    <p>Aplicación de escritorio para administrar usuarios, grupos y permisos ACL de servidores Synology mediante SSH. Nació para simplificar las altas de usuarios y tareas como «que tenga los mismos permisos que otra persona», evitando repetir ajustes carpeta por carpeta.</p>
+    <ul><li>Comparación de grupos y permisos manuales de carpetas.</li><li>Explorador, editor ACL y matriz de permisos.</li><li>Perfiles independientes para cada conexión NAS.</li><li>Historial de cambios, respaldos y exportación de informes.</li></ul>
+    <dl><dt>Creación del proyecto</dt><dd>14 de julio de 2026 · fecha del primer commit del repositorio.</dd><dt>Autor / GitHub</dt><dd><button class="btn btn-secondary" @click="github">httpbnry · github.com/httpbnry ↗</button></dd><dt>Tecnología</dt><dd>Vue 3 · TypeScript · Tauri 2 · Rust · SQLite</dd><dt>Licencia</dt><dd>CC BY-NC-SA 4.0 · Aclass Internet y Comunicaciones, S.L.</dd></dl>
+  </section>
 </template>
-
 <style scoped>
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
-  gap: 16px;
-}
-.setting-row:last-child { border-bottom: none; }
-.setting-label { font-size: 13px; font-weight: 500; }
-.setting-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-
-.toggle { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
-.toggle input { opacity: 0; width: 0; height: 0; }
-.toggle-slider {
-  position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: 22px; transition: 0.2s;
-}
-.toggle-slider:before {
-  content: ""; position: absolute; height: 16px; width: 16px; left: 2px; bottom: 2px;
-  background: var(--text-muted); border-radius: 50%; transition: 0.2s;
-}
-.toggle input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
-.toggle input:checked + .toggle-slider:before { transform: translateX(18px); background: white; }
-
-.select-mini, .input-mini {
-  padding: 5px 8px; font-size: 12px; background: var(--bg-input);
-  border: 1px solid var(--border); border-radius: 5px; color: var(--text-primary); outline: none;
-}
-.script-textarea {
-  width: 100%; padding: 8px 12px; font-size: 12px; font-family: 'Consolas', monospace;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text-primary); outline: none; resize: vertical;
-}
-.alert-info {
-  background: rgba(78, 154, 241, 0.15); border: 1px solid rgba(78, 154, 241, 0.3);
-  color: var(--accent); padding: 10px 14px; border-radius: var(--radius); font-size: 13px;
-}
-.alert-info code { font-family: monospace; font-size: 11px; color: var(--text-primary); }
+.file-input { max-width: 180px; font-size: 11px; }
+.about { max-width: 900px; }
+.about .brand-mark { margin-bottom: 18px; }
+.about h2 { font-size: 28px; margin: 8px 0; }
+.about p, .about li, .about dd { color: var(--text-secondary); line-height: 1.8; }
+.about ul { margin: 20px; }
+.about dt { font-weight: 600; margin-top: 18px; }
 </style>

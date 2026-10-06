@@ -225,6 +225,23 @@ fn extract_bracket(line: &str, prefix: &str) -> Option<String> {
     None
 }
 
+pub fn parse_share_path(output: &str) -> Option<String> {
+    output.lines().find_map(|line| extract_bracket(line, "Path"))
+        .filter(|path| path.starts_with('/') && !path.contains(|c: char| c.is_control()))
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::parse_share_path;
+
+    #[test]
+    fn share_path_uses_actual_volume_and_preserves_spaces() {
+        assert_eq!(parse_share_path("Name [Equipo]\nPath [/volume2/Equipo compartido]\n"), Some("/volume2/Equipo compartido".into()));
+        assert_eq!(parse_share_path("Path [relative/path]"), None);
+        assert_eq!(parse_share_path("Permission denied"), None);
+    }
+}
+
 pub fn parse_user_detail(output: &str) -> UserDetail {
     let mut name = String::new();
     let mut uid = String::new();

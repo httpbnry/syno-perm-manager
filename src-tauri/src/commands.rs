@@ -1,5 +1,5 @@
 use std::sync::Mutex as StdMutex;
-use std::process::Command;
+use tokio::process::Command;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -46,6 +46,8 @@ fn db_err(e: anyhow::Error) -> AppError {
 }
 
 pub struct AppState {
+    pub comparison_scan: StdMutex<Option<String>>,
+    pub comparison: StdMutex<Option<crate::comparison::StoredPlan>>,
     pub ssh: SshState,
     pub db: StdMutex<DbConnection>,
     pub config: StdMutex<config::AppConfig>,
@@ -85,7 +87,7 @@ pub async fn test_connection(
         AuthMethod::Password(password)
     };
 
-    let mut client = SshClient::connect(&host, port, &username, &auth, use_sudo, known_host.as_deref())
+    let mut client = SshClient::connect(&host, port, &username, &auth, use_sudo, known_host.as_deref(), crate::nas_config::NasConfig::default())
         .await
         .map_err(ssh_err)?;
     client.init_sudo_cache().await.map_err(ssh_err)?;
@@ -93,7 +95,7 @@ pub async fn test_connection(
     if let Some(fp) = client.get_host_fingerprint() {
         if known_host.is_none() {
             let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
-            let _ = db::save_known_host(&conn, &host, port, fp);
+            db::save_known_host(&conn, &host, port, fp).map_err(db_err)?;
         }
     }
 
@@ -167,19 +169,14 @@ pub async fn connect_to_nas(
         )
     };
 
-    let startup_script = {
+    let nas = {
         let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
-        db::get_setting(&conn, "startup_script").map_err(db_err)?
+        crate::nas_config::load(&conn, id).map_err(db_err)?
     };
-
-    if let Some(script) = &startup_script {
-        if !script.trim().is_empty() {
-            let quoted = format!("\"{}\"", script);
-            let mut cmd = Command::new("cmd");
-            cmd.arg("/S").arg("/C").raw_arg(&quoted);
-            let _ = cmd.output();
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-        }
+    nas.validate().map_err(AppError::Other)?;
+    if !nas.startup_script.trim().is_empty() {
+        let result = test_startup_script(nas.startup_script.clone()).await?;
+        if !result.success { return Err(AppError::Other(format!("Falló el script de esta conexión: {}", result.output))); }
     }
 
     let auth = if auth_method == "key" {
@@ -196,7 +193,7 @@ pub async fn connect_to_nas(
         db::get_known_host(&conn, &host, port).map_err(db_err)?
     };
 
-    let mut client = SshClient::connect(&host, port, &username, &auth, use_sudo, known_host.as_deref())
+    let mut client = SshClient::connect(&host, port, &username, &auth, use_sudo, known_host.as_deref(), nas)
         .await
         .map_err(ssh_err)?;
     client.init_sudo_cache().await.map_err(ssh_err)?;
@@ -204,15 +201,14 @@ pub async fn connect_to_nas(
     if let Some(fp) = client.get_host_fingerprint() {
         if known_host.is_none() {
             let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
-            let _ = db::save_known_host(&conn, &host, port, fp);
+            db::save_known_host(&conn, &host, port, fp).map_err(db_err)?;
         }
     }
 
     {
         let mut guard = state.ssh.client.lock().await;
         *guard = Some(client);
-    }
-    {
+        *state.comparison.lock().map_err(|e| AppError::Other(e.to_string()))? = None;
         let mut name_guard = state.ssh.connection_name.lock().await;
         *name_guard = name.clone();
     }
@@ -223,6 +219,7 @@ pub async fn connect_to_nas(
 #[tauri::command]
 pub async fn disconnect(state: tauri::State<'_, AppState>) -> AppResult<()> {
     let mut guard = state.ssh.client.lock().await;
+    *state.comparison.lock().map_err(|e| AppError::Other(e.to_string()))? = None;
     if let Some(mut client) = guard.take() {
         let _ = client.close().await;
     }
@@ -322,6 +319,10 @@ pub async fn apply_acl(
     let result = {
         let mut guard = get_connected_ssh(&state).await?;
         let client = guard.as_mut().unwrap();
+        {
+            let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
+            db::clear_acl_cache(&conn, &conn_name).map_err(db_err)?;
+        }
         provider
             .apply_acl(client, &request.paths, &request.entries, request.recursive)
             .await
@@ -386,6 +387,24 @@ pub async fn clear_snapshots(state: tauri::State<'_, AppState>) -> AppResult<()>
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct DbStats {
+    pub logs: i64,
+    pub snapshots: i64,
+}
+
+#[tauri::command]
+pub async fn get_db_stats(state: tauri::State<'_, AppState>) -> AppResult<DbStats> {
+    let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
+    let logs: i64 = conn
+        .query_row("SELECT COUNT(*) FROM audit_logs", [], |row| row.get(0))
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    let snapshots: i64 = conn
+        .query_row("SELECT COUNT(*) FROM acl_snapshots", [], |row| row.get(0))
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    Ok(DbStats { logs, snapshots })
+}
+
 #[tauri::command]
 pub async fn restore_snapshot(
     snapshot_id: i64,
@@ -400,6 +419,9 @@ pub async fn restore_snapshot(
 
     let snapshot_data = {
         let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
+        let owner: String = conn.query_row("SELECT connection_name FROM acl_snapshots WHERE id = ?1", [snapshot_id], |row| row.get(0))
+            .map_err(|e| AppError::Db(e.to_string()))?;
+        if owner != conn_name { return Err(AppError::Other("El snapshot pertenece a otra conexión".into())); }
         db::get_snapshot_by_id(&conn, snapshot_id).map_err(db_err)?
     };
 
@@ -411,6 +433,10 @@ pub async fn restore_snapshot(
     let result = {
         let mut guard = get_connected_ssh(&state).await?;
         let client = guard.as_mut().unwrap();
+        {
+            let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
+            db::clear_acl_cache(&conn, &conn_name).map_err(db_err)?;
+        }
         provider
             .restore_acl(client, &snapshot_json)
             .await
@@ -477,16 +503,13 @@ pub async fn analyze_perms(
             .collect::<Vec<_>>()
             .join(" ");
 
-        let script = format!(
-            "for d in {}; do echo \"@@@PATH:$d@@@\"; /usr/syno/bin/synoacltool -get \"$d\" 2>/dev/null; echo \"@@@END@@@\"; done",
-            paths_arg
-        );
-
         let res = {
             let mut guard = get_connected_ssh(&state).await?;
             let client = guard.as_mut().unwrap();
+            let script = format!("for d in {}; do echo \"@@@PATH:$d@@@\"; {} -get \"$d\" || exit $?; echo \"@@@END@@@\"; done", paths_arg, client.binary(crate::syno::utils::SYNOACLTOOL));
             client.exec_script(&script).await.map_err(ssh_err)?
         };
+        if res.exit_code != 0 { return Err(AppError::Ssh(extract_error(&res))); }
 
         let mut current_path = String::new();
         let mut current_output = String::new();
@@ -925,8 +948,8 @@ pub async fn get_perm_matrix(
     for (ptype, pname) in &principals {
         let mut cells = Vec::new();
         for path in &paths {
-            let entries = acls.get(path).cloned().unwrap_or_default();
-            let (color, perms) = compute_perm_color(&entries, ptype, pname);
+            let entries = acls.get(path).map(Vec::as_slice).unwrap_or(&[]);
+            let (color, perms) = compute_perm_color(entries, ptype, pname);
             cells.push(PermMatrixCell {
                 path: path.clone(),
                 color,
@@ -964,11 +987,12 @@ pub async fn set_app_setting(
 
 #[tauri::command]
 pub async fn run_startup_script(
+    id: i64,
     state: tauri::State<'_, AppState>,
 ) -> AppResult<StartupResult> {
     let script = {
         let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
-        db::get_setting(&conn, "startup_script").map_err(db_err)?
+        Some(crate::nas_config::load(&conn, id).map_err(db_err)?.startup_script)
     };
 
     if script.is_none() || script.as_ref().unwrap().trim().is_empty() {
@@ -982,9 +1006,14 @@ pub async fn run_startup_script(
     let script = script.unwrap();
     let quoted = format!("\"{}\"", script);
     let mut cmd = Command::new("cmd");
-    cmd.arg("/S").arg("/C").raw_arg(&quoted);
-    let output = cmd
-        .output()
+    cmd.arg("/S").arg("/C");
+    #[cfg(windows)]
+    cmd.as_std_mut().raw_arg(&quoted);
+    #[cfg(not(windows))]
+    cmd.arg(&quoted);
+    cmd.kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(120), cmd.output()).await
+        .map_err(|_| AppError::Other("El script superó 120 segundos".into()))?
         .map_err(|e| AppError::Other(format!("No se pudo ejecutar el script: {}", e)))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -1019,9 +1048,14 @@ pub async fn test_startup_script(
 ) -> AppResult<StartupResult> {
     let quoted = format!("\"{}\"", script);
     let mut cmd = Command::new("cmd");
-    cmd.arg("/S").arg("/C").raw_arg(&quoted);
-    let output = cmd
-        .output()
+    cmd.arg("/S").arg("/C");
+    #[cfg(windows)]
+    cmd.as_std_mut().raw_arg(&quoted);
+    #[cfg(not(windows))]
+    cmd.arg(&quoted);
+    cmd.kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(120), cmd.output()).await
+        .map_err(|_| AppError::Other("El script superó 120 segundos".into()))?
         .map_err(|e| AppError::Other(format!("No se pudo ejecutar: {}", e)))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -1088,9 +1122,10 @@ pub async fn get_config(
 
 #[tauri::command]
 pub async fn save_config(
-    dto: ConfigDto,
+    mut dto: ConfigDto,
     state: tauri::State<'_, AppState>,
 ) -> AppResult<()> {
+    dto.description_template = dto.description_template.replace("{password}", "").trim().to_string();
     {
         let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
         let pairs: &[(&str, &str)] = &[
@@ -1174,12 +1209,14 @@ pub async fn export_config(
     }
 
     let startup = db::get_setting(&conn, "startup_script").map_err(db_err)?;
+    let nas_configs = crate::nas_config::export_all(&conn).map_err(db_err)?;
 
     let export = serde_json::json!({
-        "version": "1.0.0",
+        "version": "2.0.0",
         "exported_at": chrono::Utc::now().to_rfc3339(),
         "settings": settings,
         "connections": connections,
+        "nas_configs": nas_configs,
         "startup_script": startup,
     });
 
@@ -1198,14 +1235,13 @@ pub async fn import_config(
 
     if let Some(settings) = data.get("settings").and_then(|v| v.as_object()) {
         for (key, value) in settings {
+            // Imported files must never install a command that runs on the next connection.
+            if key == "startup_script" { continue; }
             if let Some(val_str) = value.as_str() {
-                let _ = db::set_setting(&conn, key, val_str);
+                let safe_value = if key == "description_template" { val_str.replace("{password}", "") } else { val_str.to_string() };
+                db::set_setting(&conn, key, &safe_value).map_err(db_err)?;
             }
         }
-    }
-
-    if let Some(script) = data.get("startup_script").and_then(|v| v.as_str()) {
-        let _ = db::set_setting(&conn, "startup_script", script);
     }
 
     if let Some(connections) = data.get("connections").and_then(|v| v.as_array()) {
@@ -1220,6 +1256,18 @@ pub async fn import_config(
 
             if !name.is_empty() {
                 let _ = db::insert_connection(&conn, name, host, port, username, use_sudo, auth_method, key_path);
+            }
+        }
+    }
+
+    if let Some(profiles) = data.get("nas_configs").and_then(|v| v.as_object()) {
+        for (name, value) in profiles {
+            let Ok(config) = serde_json::from_value::<crate::nas_config::NasConfig>(value.clone()) else { continue };
+            // Never import executable startup scripts automatically.
+            let mut config = config;
+            config.startup_script = String::new();
+            if let Ok(id) = conn.query_row::<i64, _, _>("SELECT id FROM connections WHERE name = ?1", [name], |row| row.get(0)) {
+                let _ = crate::nas_config::store(&conn, id, &config);
             }
         }
     }
