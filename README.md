@@ -263,6 +263,6 @@ Cada cambio de permisos guarda un snapshot de las ACLs anteriores, permitiendo d
 
 ## Licencia
 
-CC BY-NC-SA 4.0 — Copyright (c) 2026 Aclass Internet y Comunicaciones, S.L.
+CC BY-NC-SA 4.0 — Copyright (c) 2026 httpbnry
 
 Permite uso y modificacion pero **NO venta comercial**. Si alguien modifica la app, debe compartirla con la misma licencia. Detalles en [creativecommons.org/licenses/by-nc-sa/4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).

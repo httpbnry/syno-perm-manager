@@ -2,7 +2,7 @@
 name = "syno-perm-manager"
 version = "1.0.0"
 description = "Gestor de permisos ACL para Synology NAS via SSH"
-authors = ["Aclass"]
+authors = ["httpbnry"]
 edition = "2021"
 
 [lib]

@@ -70,7 +70,7 @@ async function github() { try { await openUrl('https://github.com/httpbnry') } c
     <span class="brand-mark">S</span><div class="eyebrow">SYNOLOGY · USUARIOS · PERMISOS</div><h2>Syno Perm Manager</h2><p class="helper-text">Versión {{ version }}</p>
     <p>Aplicación de escritorio para administrar usuarios, grupos y permisos ACL de servidores Synology mediante SSH. Nació para simplificar las altas de usuarios y tareas como «que tenga los mismos permisos que otra persona», evitando repetir ajustes carpeta por carpeta.</p>
     <ul><li>Comparación de grupos y permisos manuales de carpetas.</li><li>Explorador, editor ACL y matriz de permisos.</li><li>Perfiles independientes para cada conexión NAS.</li><li>Historial de cambios, respaldos y exportación de informes.</li></ul>
-    <dl><dt>Creación del proyecto</dt><dd>14 de julio de 2026 · fecha del primer commit del repositorio.</dd><dt>Autor / GitHub</dt><dd><button class="btn btn-secondary" @click="github">httpbnry · github.com/httpbnry ↗</button></dd><dt>Tecnología</dt><dd>Vue 3 · TypeScript · Tauri 2 · Rust · SQLite</dd><dt>Licencia</dt><dd>CC BY-NC-SA 4.0 · Aclass Internet y Comunicaciones, S.L.</dd></dl>
+    <dl><dt>Creación del proyecto</dt><dd>14 de julio de 2026 · fecha del primer commit del repositorio.</dd><dt>Autor / GitHub</dt><dd><button class="btn btn-secondary" @click="github">httpbnry · github.com/httpbnry ↗</button></dd><dt>Tecnología</dt><dd>Vue 3 · TypeScript · Tauri 2 · Rust · SQLite</dd><dt>Licencia</dt><dd>CC BY-NC-SA 4.0 · httpbnry</dd></dl>
   </section>
 </template>
 <style scoped>
