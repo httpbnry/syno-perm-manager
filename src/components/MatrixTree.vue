@@ -37,7 +37,7 @@ const depth = props.depth ?? 0
           :checked="selectedPaths.has(node.path)"
           @change="emit('togglePath', node.path)"
         />
-        <span class="tree-icon">&#128193;</span>
+        <span class="tree-icon" aria-hidden="true"></span>
         <span class="tree-name" :title="node.path">{{ node.name }}</span>
       </div>
       <div v-if="node.expanded && node.children.length > 0">
@@ -57,39 +57,58 @@ const depth = props.depth ?? 0
 .tree-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px;
-  border-radius: 3px;
+  gap: 7px;
+  padding: 7px 8px;
+  border-radius: 11px;
   cursor: pointer;
+  color: var(--text-secondary);
+  transition: background .12s ease, color .12s ease;
 }
 
 .tree-row:hover {
   background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .tree-toggle {
-  width: 14px;
+  width: 16px;
   text-align: center;
-  font-size: 8px;
+  font-size: 9px;
   color: var(--text-muted);
   flex-shrink: 0;
 }
 
 .tree-check {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   accent-color: var(--accent);
   flex-shrink: 0;
 }
 
 .tree-icon {
-  font-size: 11px;
+  width: 12px;
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 42%, var(--bg-tertiary));
+  flex-shrink: 0;
+  position: relative;
+}
+
+.tree-icon::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: -3px;
+  width: 7px;
+  height: 4px;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--accent) 34%, var(--bg-tertiary));
   flex-shrink: 0;
 }
 
 .tree-name {
-  font-size: 11px;
-  font-family: monospace;
+  font-size: 12px;
+  font-family: 'Cascadia Code', Consolas, monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
