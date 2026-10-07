@@ -860,6 +860,30 @@ pub async fn get_dashboard_stats(
     })
 }
 
+#[tauri::command]
+pub async fn get_dashboard_audit_stats(
+    state: tauri::State<'_, AppState>,
+) -> AppResult<DashboardAuditStats> {
+    let conn = state.db.lock().map_err(|e| AppError::Other(e.to_string()))?;
+    let recent_logs = db::list_audit_logs(&conn, 5).map_err(db_err)?;
+    let total_changes: i64 = conn
+        .query_row("SELECT COUNT(*) FROM audit_logs", [], |row| row.get(0))
+        .unwrap_or(0);
+    let successful_changes: i64 = conn
+        .query_row("SELECT COUNT(*) FROM audit_logs WHERE success = 1", [], |row| row.get(0))
+        .unwrap_or(0);
+    let failed_changes: i64 = conn
+        .query_row("SELECT COUNT(*) FROM audit_logs WHERE success = 0", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    Ok(DashboardAuditStats {
+        recent_logs,
+        total_changes,
+        successful_changes,
+        failed_changes,
+    })
+}
+
 fn compute_perm_color(entries: &[AclEntry], ptype: &str, pname: &str) -> (String, String) {
     let mut has_allow = false;
     let mut allow_r = false;

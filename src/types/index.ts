@@ -137,6 +137,13 @@ export interface DashboardStats {
   failed_changes: number
 }
 
+export interface DashboardAuditStats {
+  recent_logs: AuditLog[]
+  total_changes: number
+  successful_changes: number
+  failed_changes: number
+}
+
 export interface PermMatrixCell {
   path: string
   color: string

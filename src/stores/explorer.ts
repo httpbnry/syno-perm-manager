@@ -50,7 +50,7 @@ export const useExplorerStore = defineStore('explorer', () => {
 
   async function loadShares(force = false): Promise<void> {
     if (sharesRequest) return sharesRequest
-    if (!force && sharesLoaded > Date.now() - 30_000) return
+    if (!force && sharesLoaded > Date.now() - 300_000) return
     const version = epoch
     const request = fetchShares(force, version)
     sharesRequest = request

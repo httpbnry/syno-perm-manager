@@ -3,12 +3,15 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { cachedRead } from '../utils/readCache'
 import { useConnectionStore } from '../stores/connection'
-import type { DashboardStats } from '../types'
+import { useExplorerStore } from '../stores/explorer'
+import type { DashboardAuditStats, DashboardStats } from '../types'
 
 const router = useRouter()
 const connStore = useConnectionStore()
+const explorerStore = useExplorerStore()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(true)
+const nasLoading = ref(false)
 const error = ref('')
 
 onMounted(async () => {
@@ -17,13 +20,42 @@ onMounted(async () => {
     return
   }
   try {
-    stats.value = await cachedRead<DashboardStats>('get_dashboard_stats')
+    const audit = await cachedRead<DashboardAuditStats>('get_dashboard_audit_stats')
+    stats.value = buildStats(audit)
+    void preloadNasData()
   } catch (e: any) {
     error.value = String(e)
   } finally {
     loading.value = false
   }
 })
+
+async function preloadNasData() {
+  nasLoading.value = true
+  try {
+    await Promise.all([explorerStore.loadShares(), explorerStore.loadUsersGroups()])
+    if (stats.value) {
+      stats.value = { ...stats.value, user_count: explorerStore.users.length, group_count: explorerStore.groups.length, share_count: explorerStore.shares.length }
+    }
+  } catch (e: any) {
+    error.value = String(e)
+  } finally {
+    nasLoading.value = false
+  }
+}
+
+function countLabel(value: number): string | number {
+  return nasLoading.value && value === 0 ? '...' : value
+}
+
+function buildStats(audit: DashboardAuditStats): DashboardStats {
+  return {
+    user_count: explorerStore.users.length,
+    group_count: explorerStore.groups.length,
+    share_count: explorerStore.shares.length,
+    ...audit,
+  }
+}
 
 const successRate = computed(() => {
   if (!stats.value || stats.value.total_changes === 0) return 100
@@ -55,17 +87,17 @@ const successRate = computed(() => {
     <div class="stats-grid">
       <div class="stat-card" @click="router.push('/users')">
         <div class="stat-icon">&#128100;</div>
-        <div class="stat-value">{{ stats.user_count }}</div>
+        <div class="stat-value">{{ countLabel(stats.user_count) }}</div>
         <div class="stat-label">Usuarios</div>
       </div>
       <div class="stat-card" @click="router.push('/users')">
         <div class="stat-icon">&#128101;</div>
-        <div class="stat-value">{{ stats.group_count }}</div>
+        <div class="stat-value">{{ countLabel(stats.group_count) }}</div>
         <div class="stat-label">Grupos</div>
       </div>
       <div class="stat-card" @click="router.push('/explorer')">
         <div class="stat-icon">&#128193;</div>
-        <div class="stat-value">{{ stats.share_count }}</div>
+        <div class="stat-value">{{ countLabel(stats.share_count) }}</div>
         <div class="stat-label">Carpetas</div>
       </div>
       <div class="stat-card" @click="router.push('/logs')">

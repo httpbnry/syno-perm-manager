@@ -122,6 +122,14 @@ pub struct DashboardStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardAuditStats {
+    pub recent_logs: Vec<AuditLog>,
+    pub total_changes: i64,
+    pub successful_changes: i64,
+    pub failed_changes: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermMatrixCell {
     pub path: String,
     pub color: String,

@@ -85,6 +85,7 @@ pub fn run() {
             commands::set_group_members,
             commands::rename_group,
             commands::get_dashboard_stats,
+            commands::get_dashboard_audit_stats,
             commands::get_perm_matrix,
             commands::clear_logs,
             commands::clear_snapshots,

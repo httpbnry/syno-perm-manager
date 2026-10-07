@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 // Shared in-flight reads prevent navigation from queueing the same SSH commands repeatedly.
 const pending = new Map<string, Promise<unknown>>()
 const cache = new Map<string, { value: unknown; until: number }>()
+const defaultTtlMs = 300_000
 let generation = 0
 export function resetReadCache() { generation++; pending.clear(); cache.clear() }
 export function cachedRead<T>(command: string, args?: Record<string, unknown>, force = false): Promise<T> {
@@ -13,7 +14,7 @@ export function cachedRead<T>(command: string, args?: Record<string, unknown>, f
   if (!force && stored && stored.until > Date.now()) return Promise.resolve(stored.value as T)
   const version = generation
   const request = invoke<T>(command, args).then(value => {
-    if (version === generation) cache.set(key, { value, until: Date.now() + 30_000 })
+    if (version === generation) cache.set(key, { value, until: Date.now() + defaultTtlMs })
     return value
   }).finally(() => { if (pending.get(key) === request) pending.delete(key) })
   pending.set(key, request)
