@@ -155,9 +155,11 @@ export const useExplorerStore = defineStore('explorer', () => {
   }
 
   async function loadAcl(path: string) {
+    const version = epoch
     error.value = ''
     try {
-      currentAcl.value = await invoke<AclEntry[]>('get_acl', { path })
+      const acl = await invoke<AclEntry[]>('get_acl', { path })
+      if (version === epoch) currentAcl.value = acl
     } catch (e: any) {
       error.value = String(e)
     }
@@ -301,10 +303,10 @@ export const useExplorerStore = defineStore('explorer', () => {
       computeOverrides()
       propagateSubfolderAccess()
     } catch (e: any) {
-      error.value = String(e)
+      if (version === epoch) error.value = String(e)
+    } finally {
+      if (version === epoch) analyzing.value = false
     }
-
-    analyzing.value = false
   }
 
   function clearPermColors() {

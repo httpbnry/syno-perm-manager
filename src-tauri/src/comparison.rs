@@ -66,7 +66,7 @@ async fn read_scan(ssh: &mut SshClient, cmd: &str, state: &AppState, id: &str) -
         Ok(())
     };
     check()?;
-    let result = read(ssh, cmd).await?;
+    let result = read_limited(ssh, cmd, 90).await?;
     check()?;
     Ok(result)
 }
@@ -160,6 +160,12 @@ async fn read(ssh: &mut SshClient, cmd: &str) -> Result<String, String> {
     Ok(result.stdout)
 }
 
+async fn read_limited(ssh: &mut SshClient, cmd: &str, seconds: u64) -> Result<String, String> {
+    let result = ssh.exec_with_timeout(cmd, seconds).await.map_err(|e| e.to_string())?;
+    if result.exit_code != 0 { return Err(format!("Comando fallido ({}): {}", result.exit_code, extract_error(&result))); }
+    Ok(result.stdout)
+}
+
 fn valid_name(name: &str) -> bool {
     !name.is_empty() && !name.starts_with('-') && !name.contains(|c: char| c.is_control() || c == ':')
 }
@@ -237,7 +243,7 @@ pub async fn compare_users(request: CompareRequest, state: tauri::State<'_, AppS
         let output = read_scan(ssh, &format!("find {} {} -type d \\( {} \\) -prune -o -type d -print0", shell_escape(canonical), depth, ssh.exclusion_expression()), &state, &request.scan_id).await?;
         if output.is_empty() { return Err(format!("No es una carpeta analizable: {root}")); }
         for path in output.split('\0').filter(|p| !p.is_empty()) { paths.insert(path.to_string()); }
-        if paths.len() > 5000 { return Err("El ámbito supera 5000 carpetas. Selecciona raíces más específicas.".into()); }
+        if paths.len() > 2500 { return Err("El ámbito supera 2500 carpetas. Selecciona raíces más específicas para evitar bloquear la sesión SSH.".into()); }
     }
     let mut folders = Vec::new();
     // Children first: adding an inheritable ACE on a parent can renumber child ACEs.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useExplorerStore } from '../stores/explorer'
 import type { PermMatrix } from '../types'
@@ -17,6 +17,11 @@ const pathSearch = ref('')
 const principalSearch = ref('')
 const showConfig = ref(true)
 const filterColor = ref<string | null>(null)
+const rowPage = ref(0)
+const colPage = ref(0)
+const pageSizeRows = 80
+const pageSizeCols = 80
+const maxCells = 12000
 
 onMounted(() => {
   store.loadShares()
@@ -91,6 +96,11 @@ function clearAll() {
 
 async function generateMatrix() {
   if (selectedPaths.value.size === 0 || selectedPrincipals.value.size === 0) return
+  const cells = selectedPaths.value.size * selectedPrincipals.value.size
+  if (cells > maxCells) {
+    error.value = `La matriz tendría ${cells.toLocaleString()} celdas. Reduce carpetas/usuarios o genera por bloques (máximo ${maxCells.toLocaleString()} celdas).`
+    return
+  }
   loading.value = true
   error.value = ''
   matrix.value = null
@@ -101,6 +111,8 @@ async function generateMatrix() {
       return [type, nameParts.join(':')] as [string, string]
     })
     matrix.value = await invoke<PermMatrix>('get_perm_matrix', { paths, principals })
+    rowPage.value = 0
+    colPage.value = 0
     showConfig.value = false
   } catch (e: any) {
     error.value = String(e)
@@ -177,6 +189,16 @@ const filteredRows = computed(() => {
   if (!matrix.value) return []
   return matrix.value.rows.filter(rowHasFilteredColor)
 })
+
+watch(filterColor, () => { rowPage.value = 0 })
+
+const visibleRows = computed(() => filteredRows.value.slice(rowPage.value * pageSizeRows, (rowPage.value + 1) * pageSizeRows))
+const visiblePaths = computed(() => matrix.value?.paths.slice(colPage.value * pageSizeCols, (colPage.value + 1) * pageSizeCols) ?? [])
+const rowPages = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSizeRows)))
+const colPages = computed(() => Math.max(1, Math.ceil((matrix.value?.paths.length ?? 0) / pageSizeCols)))
+function visibleCells(row: PermMatrix['rows'][0]) {
+  return row.cells.slice(colPage.value * pageSizeCols, (colPage.value + 1) * pageSizeCols)
+}
 </script>
 
 <template>
@@ -261,24 +283,32 @@ const filteredRows = computed(() => {
 
   <!-- Matriz -->
   <div v-if="matrix" class="matrix-container">
-    <div class="matrix-grid" :style="{ gridTemplateColumns: '160px repeat(' + matrix.paths.length + ', 1fr)' }">
+    <div class="matrix-pager">
+      <button class="btn btn-secondary btn-sm" :disabled="rowPage === 0" @click="rowPage--">Filas anteriores</button>
+      <span>Filas {{ rowPage + 1 }} / {{ rowPages }}</span>
+      <button class="btn btn-secondary btn-sm" :disabled="rowPage + 1 >= rowPages" @click="rowPage++">Filas siguientes</button>
+      <button class="btn btn-secondary btn-sm" :disabled="colPage === 0" @click="colPage--">Columnas anteriores</button>
+      <span>Columnas {{ colPage + 1 }} / {{ colPages }}</span>
+      <button class="btn btn-secondary btn-sm" :disabled="colPage + 1 >= colPages" @click="colPage++">Columnas siguientes</button>
+    </div>
+    <div class="matrix-grid" :style="{ gridTemplateColumns: '160px repeat(' + visiblePaths.length + ', 1fr)' }">
       <!-- Header row -->
       <div class="grid-header sticky-corner">Principal</div>
       <div
-        v-for="p in matrix.paths"
+        v-for="p in visiblePaths"
         :key="p"
         class="grid-header"
         :title="p"
       >{{ shortPath(p) }}</div>
 
       <!-- Data rows -->
-      <template v-for="row in filteredRows" :key="row.principal_type + ':' + row.principal">
+      <template v-for="row in visibleRows" :key="row.principal_type + ':' + row.principal">
         <div class="grid-label">
           <span class="ptype" :class="row.principal_type === 'group' ? 'group' : 'user'">{{ row.principal_type === 'group' ? 'G' : 'U' }}</span>
           <span class="label-name" :title="row.principal">{{ row.principal }}</span>
         </div>
         <div
-          v-for="cell in row.cells"
+          v-for="cell in visibleCells(row)"
           :key="cell.path"
           class="grid-cell"
           :class="cell.color"
@@ -296,6 +326,7 @@ const filteredRows = computed(() => {
 <style scoped>
 .compact-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
 .matrix-toolbar { padding: 8px 12px !important; margin-bottom: 8px !important; }
+.matrix-pager { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; font-size: 12px; color: var(--text-secondary); }
 
 .matrix-config { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .config-column { display: flex; flex-direction: column; gap: 4px; }

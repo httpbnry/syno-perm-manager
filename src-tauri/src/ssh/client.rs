@@ -212,8 +212,12 @@ impl SshClient {
     }
 
     pub async fn exec(&mut self, command: &str) -> anyhow::Result<CommandResult> {
+        self.exec_with_timeout(command, self.nas.ssh_timeout_secs).await
+    }
+
+    pub async fn exec_with_timeout(&mut self, command: &str, timeout_secs: u64) -> anyhow::Result<CommandResult> {
         let rewritten = self.rewrite_command(command);
-        let timeout = self.nas.ssh_timeout_secs;
+        let timeout = timeout_secs.clamp(5, self.nas.ssh_timeout_secs.max(5));
         tokio::time::timeout(Duration::from_secs(timeout), self.exec_once(&rewritten)).await
             .map_err(|_| anyhow::anyhow!("El comando SSH superó el tiempo máximo de {} segundos", timeout))?
     }
