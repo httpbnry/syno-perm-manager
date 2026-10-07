@@ -14,7 +14,7 @@ const error = ref('')
 const message = ref('')
 const busy = ref(false)
 const version = ref('1.0.0')
-const sections = [{ id: 'general', label: 'General' }, { id: 'nas', label: 'Conexiones NAS' }, { id: 'data', label: 'Datos' }, { id: 'about', label: 'Acerca de / About' }]
+const sections = [{ id: 'general', label: 'General' }, { id: 'nas', label: 'Conexiones NAS' }, { id: 'data', label: 'Datos' }, { id: 'about', label: 'About' }]
 onMounted(async () => {
   try {
     const [c, s, v] = await Promise.all([invoke<AppConfig>('get_config'), invoke<typeof stats.value>('get_db_stats'), getVersion()])
@@ -51,7 +51,7 @@ async function github() { try { await openUrl('https://github.com/httpbnry') } c
 <template>
   <div class="view-header"><div class="eyebrow">PREFERENCIAS</div><h1>Configuración</h1><p>Personaliza la aplicación y configura cada NAS de forma independiente.</p></div>
   <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div><div v-if="message" class="alert alert-success" role="status">{{ message }}</div>
-  <div class="card btn-group"><button v-for="s in sections" :key="s.id" class="btn" :class="section === s.id ? 'btn-primary' : 'btn-secondary'" @click="section = s.id">{{ s.label }}</button></div>
+  <div class="settings-shell"><aside class="settings-tabs" aria-label="Secciones de configuración"><button v-for="s in sections" :key="s.id" class="settings-tab" :class="{ active: section === s.id }" @click="section = s.id">{{ s.label }}</button></aside><div class="settings-content">
   <NasSettings v-if="section === 'nas'" :initial-id="Number(route.query.connection) || undefined" />
   <section v-if="section === 'general' && config" class="card">
     <h2 class="card-title">Preferencias generales</h2>
@@ -67,18 +67,25 @@ async function github() { try { await openUrl('https://github.com/httpbnry') } c
     <div class="btn-group"><button class="btn btn-secondary" @click="exportConfig">Exportar configuración</button><label class="btn btn-secondary">Importar JSON<input type="file" accept=".json" class="file-input" @change="importConfig" /></label></div>
   </section>
   <section v-if="section === 'about'" class="card about">
-    <span class="brand-mark">S</span><div class="eyebrow">SYNOLOGY · USUARIOS · PERMISOS</div><h2>Syno Perm Manager</h2><p class="helper-text">Versión {{ version }}</p>
+    <div class="about-head"><span class="brand-mark">S</span><div><div class="eyebrow">SYNOLOGY · USUARIOS · PERMISOS</div><h2>Syno Perm Manager</h2><p class="helper-text">Versión {{ version }}</p></div></div>
     <p>Aplicación de escritorio para administrar usuarios, grupos y permisos ACL de servidores Synology mediante SSH. Nació para simplificar las altas de usuarios y tareas como «que tenga los mismos permisos que otra persona», evitando repetir ajustes carpeta por carpeta.</p>
     <ul><li>Comparación de grupos y permisos manuales de carpetas.</li><li>Explorador, editor ACL y matriz de permisos.</li><li>Perfiles independientes para cada conexión NAS.</li><li>Historial de cambios, respaldos y exportación de informes.</li></ul>
     <dl><dt>Creación del proyecto</dt><dd>14 de julio de 2026 · fecha del primer commit del repositorio.</dd><dt>Autor / GitHub</dt><dd><button class="btn btn-secondary" @click="github">httpbnry · github.com/httpbnry ↗</button></dd><dt>Tecnología</dt><dd>Vue 3 · TypeScript · Tauri 2 · Rust · SQLite</dd><dt>Licencia</dt><dd>CC BY-NC-SA 4.0 · httpbnry</dd></dl>
-  </section>
+  </section></div></div>
 </template>
 <style scoped>
+.settings-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; align-items: start; }
+.settings-tabs { position: sticky; top: 0; display: grid; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 18px; background: color-mix(in srgb, var(--bg-secondary) 88%, transparent); }
+.settings-tab { text-align: left; padding: 10px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--text-secondary); cursor: pointer; font-weight: 600; }
+.settings-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.settings-tab.active { background: color-mix(in srgb, var(--accent) 14%, var(--bg-secondary)); color: var(--accent); }
+.settings-content { min-width: 0; }
 .file-input { max-width: 180px; font-size: 11px; }
 .about { max-width: 900px; }
-.about .brand-mark { margin-bottom: 18px; }
+.about-head { display: flex; gap: 16px; align-items: center; margin-bottom: 18px; }
 .about h2 { font-size: 28px; margin: 8px 0; }
 .about p, .about li, .about dd { color: var(--text-secondary); line-height: 1.8; }
 .about ul { margin: 20px; }
 .about dt { font-weight: 600; margin-top: 18px; }
+@media (max-width: 900px) { .settings-shell { grid-template-columns: 1fr; } .settings-tabs { position: static; grid-template-columns: repeat(2, 1fr); } }
 </style>

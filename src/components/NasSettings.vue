@@ -58,10 +58,9 @@ async function testScript() {
 }
 </script>
 <template>
-  <section class="card">
-    <h2 class="card-title">Configuración NAS por conexión</h2>
+  <section class="card nas-card">
+    <div class="nas-heading"><div><h2 class="card-title">Configuración NAS por conexión</h2><p class="helper-text">Rutas, exclusiones y script previo independientes para cada NAS.</p></div></div>
     <div class="form-group"><label for="nas-connection">Conexión a configurar</label><select id="nas-connection" v-model="id" :disabled="saving || testing"><option :value="null">Selecciona una conexión</option><option v-for="c in connection.connections" :key="c.id!" :value="c.id">{{ c.name }} · {{ c.host }}</option></select></div>
-    <p class="helper-text">Cada conexión conserva sus propias rutas, exclusiones, timeout y script de inicio. Las carpetas compartidas usan la ruta real devuelta por DSM; el volumen de referencia sirve como raíz para exploraciones específicas.</p>
     <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div><div v-if="message" class="alert alert-success" role="status">{{ message }}</div>
     <div v-if="loading" role="status"><span class="loading-spinner" /> Cargando configuración…</div>
     <fieldset v-if="config" :disabled="saving || testing" class="nas-fields">
@@ -69,14 +68,18 @@ async function testScript() {
       <div class="form-group"><label for="nas-timeout">Timeout SSH / comando (segundos)</label><input id="nas-timeout" v-model.number="config.ssh_timeout_secs" type="number" min="10" max="3600" /></div>
       <div class="form-group"><label for="nas-keepalive">Keepalive (segundos)</label><input id="nas-keepalive" v-model.number="config.keepalive_secs" type="number" min="5" max="120" /></div></div>
       <div class="form-group"><label for="nas-script">Script previo a esta conexión · cmd /C · máximo 120 segundos</label><textarea id="nas-script" v-model="config.startup_script" rows="3" placeholder="Comando para conectar la VPN de este NAS (opcional)" /></div>
-      <div class="btn-group"><button class="btn btn-primary" @click="save">Guardar esta conexión</button><button class="btn btn-secondary" :disabled="!config.startup_script.trim()" @click="testScript">Probar script</button></div>
+      <div class="btn-group nas-actions"><button class="btn btn-primary" @click="save">Guardar cambios</button><button class="btn btn-secondary" :disabled="!config.startup_script.trim()" @click="testScript">Probar script</button></div>
     </fieldset>
     <p v-if="!connection.connections.length && !loading" class="empty-state">Crea primero una conexión NAS.</p>
     <pre v-if="test" class="alert" :class="test.success ? 'alert-success' : 'alert-error'">{{ test.output || (test.success ? 'Script completado' : 'El script falló') }}</pre>
   </section>
 </template>
 <style scoped>
+.nas-card { box-shadow: none; }
+.nas-heading { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 10px; }
 .nas-fields { border: 0; min-width: 0; }
-.nas-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+.nas-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; }
+.nas-actions { margin-top: 6px; }
 pre { white-space: pre-wrap; max-height: 240px; overflow: auto; margin-top: 16px; }
+@media (max-width: 900px) { .nas-grid { grid-template-columns: 1fr; } }
 </style>

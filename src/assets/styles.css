@@ -17,6 +17,7 @@
   --border: #26344a;
   --radius: 14px;
   --sidebar-width: 244px;
+  --shadow-soft: 0 12px 34px rgba(0, 0, 0, 0.16);
 }
 
 [data-theme="light"] {
@@ -36,6 +37,7 @@
   --success: #2e7d32;
   --warning: #e65100;
   --border: #d9e2ef;
+  --shadow-soft: 0 16px 38px rgba(31, 48, 74, 0.08);
 }
 
 * {
@@ -48,7 +50,9 @@ body {
   font-family: 'Segoe UI', Inter, system-ui, -apple-system, sans-serif;
   font-size: 14px;
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 13%, transparent), transparent 34rem),
+    var(--bg-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -64,7 +68,7 @@ body {
 
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--bg-secondary) 92%, #000 8%);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -72,8 +76,8 @@ body {
 }
 
 .sidebar-header {
-  padding: 26px 20px;
-  font-size: 23px;
+  padding: 22px 18px;
+  font-size: 21px;
   font-weight: 600;
   color: var(--accent);
   border-bottom: 1px solid var(--border);
@@ -97,8 +101,8 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: var(--radius);
+  padding: 9px 12px;
+  border-radius: 11px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
@@ -111,10 +115,10 @@ body {
 }
 
 .nav-item.active {
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--accent) 13%, var(--bg-secondary));
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-  box-shadow: inset 3px 0 var(--accent);
+  box-shadow: none;
 }
 
 .nav-item.disabled {
@@ -143,16 +147,16 @@ body {
 .main-content {
   flex: 1;
   overflow-y: auto;
-  padding: 30px 36px;
+  padding: 28px 34px;
   min-width: 0;
 }
 
 .view-header {
-  margin-bottom: 28px;
+  margin-bottom: 22px;
 }
 
 .view-header h1 {
-  font-size: 28px;
+  font-size: 27px;
   letter-spacing: -0.8px;
   font-weight: 600;
   margin-bottom: 4px;
@@ -164,18 +168,18 @@ body {
 }
 
 .card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: 0 4px 18px #0000000a;
+  background: color-mix(in srgb, var(--bg-secondary) 96%, var(--bg-primary));
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: var(--shadow-soft);
   margin-bottom: 16px;
 }
 
 .card-title {
   font-size: 15px;
   font-weight: 600;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   color: var(--text-primary);
 }
 
@@ -196,8 +200,8 @@ body {
   width: 100%;
   padding: 10px 12px;
   background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 11px;
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
@@ -231,9 +235,9 @@ body {
 }
 
 .btn {
-  padding: 10px 18px;
-  border: none;
-  border-radius: 9px;
+  padding: 9px 15px;
+  border: 1px solid transparent;
+  border-radius: 11px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -267,7 +271,8 @@ body {
 }
 
 .btn-secondary {
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--bg-tertiary) 66%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
   color: var(--text-primary);
 }
 
@@ -292,7 +297,7 @@ table {
 
 table th,
 table td {
-  padding: 10px 12px;
+  padding: 9px 11px;
   text-align: left;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
@@ -312,8 +317,8 @@ table tr:hover {
 
 .badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
 }
@@ -484,12 +489,17 @@ table tr:hover {
 .eyebrow { color: var(--accent); margin-bottom: 8px; }
 .workspace-actions { display: flex; gap: 14px; align-items: center; }
 .sidebar-header { display: flex; gap: 12px; align-items: center; color: var(--text-primary); }
-.brand-mark { display: grid; place-items: center; width: 40px; height: 44px; background: linear-gradient(140deg, #63b6f9, #4664e6); color: white; border-radius: 12px; font-weight: 800; }
+.brand-mark { display: grid; place-items: center; width: 38px; height: 40px; background: linear-gradient(140deg, #63b6f9, #4664e6); color: white; border-radius: 13px; font-weight: 800; box-shadow: 0 10px 24px rgba(70, 100, 230, .25); }
 .brand-subtitle { display: block; font-size: 8px; color: var(--text-muted); letter-spacing: 1.8px; }
 .sidebar-footer { margin: 12px; padding: 14px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
 .nav-item svg { flex-shrink: 0; }
 .helper-text { color: var(--text-secondary); font-size: 12px; line-height: 1.7; margin: 12px 0; }
 .step-chip { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-right: 8px; background: var(--bg-tertiary); color: var(--accent); border-radius: 8px; font-size: 12px; }
+.theme-toggle { display: inline-flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--border) 72%, transparent); background: var(--bg-input); color: var(--text-secondary); cursor: pointer; font-size: 12px; font-weight: 600; }
+.theme-toggle:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.theme-toggle-track { display: inline-flex; align-items: center; width: 32px; height: 18px; padding: 2px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 24%, var(--bg-tertiary)); }
+.theme-toggle-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--text-primary); transition: transform .16s ease; }
+[data-theme="light"] .theme-toggle-dot { transform: translateX(14px); }
 .table-scroll { overflow: auto; max-width: 100%; }
 table td { vertical-align: top; }
 table th { background: var(--bg-input); }

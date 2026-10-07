@@ -132,7 +132,7 @@ function canNavigate(item: NavItem): boolean {
     </div>
   </div>
   <div class="workspace">
-    <header class="workspace-header"><div><span class="workspace-label">ESPACIO DE TRABAJO</span><strong>{{ connStore.isConnected ? connStore.connectedName : 'Administración de Synology' }}</strong></div><div class="workspace-actions"><span class="badge" :class="connStore.isConnected ? 'badge-success' : 'badge-info'">{{ connStore.isConnected ? 'SSH conectado' : 'Desconectado' }}</span><button class="btn btn-secondary btn-sm" @click="toggleTheme" aria-label="Cambiar tema claro u oscuro">◐ Tema</button></div></header>
+    <header class="workspace-header"><div><span class="workspace-label">ESPACIO DE TRABAJO</span><strong>{{ connStore.isConnected ? connStore.connectedName : 'Administración de Synology' }}</strong></div><div class="workspace-actions"><span class="badge" :class="connStore.isConnected ? 'badge-success' : 'badge-info'">{{ connStore.isConnected ? 'SSH conectado' : 'Desconectado' }}</span><button class="theme-toggle" @click="toggleTheme" aria-label="Cambiar tema claro u oscuro"><span class="theme-toggle-track"><span class="theme-toggle-dot" /></span><span>{{ currentTheme === 'light' ? 'Claro' : 'Oscuro' }}</span></button></div></header>
     <main class="main-content" id="main-content">
       <div v-if="themeError" class="alert alert-error" role="alert">{{ themeError }}</div>
       <router-view />
