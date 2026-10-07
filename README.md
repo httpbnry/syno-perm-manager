@@ -39,7 +39,8 @@ Synology ofrece una API REST (DSM API) para gestionar el NAS remotamente. Sin em
 ### Interfaz y rendimiento
 - Nueva navegación con iconos, cabecera de conexión, panel de inicio y diseño común de tarjetas, tablas y formularios.
 - Temas claro/oscuro persistentes, navegación por teclado e indicadores de foco.
-- Lecturas SSH deduplicadas y cacheadas (30 s en interfaz, 5 min en ACL), sin reencolar al cambiar rápido de sección; los resultados obsoletos se descartan.
+- Lecturas SSH deduplicadas y cacheadas durante 5 min, sin reencolar al cambiar rápido de sección; los resultados obsoletos se descartan.
+- El dashboard carga primero los datos locales y precalienta usuarios, grupos y carpetas en segundo plano para acelerar la entrada a Explorador.
 - Comparaciones paginadas, filtro de carpetas y rutas canónicas deduplicadas.
 - Resolución de la ruta real de cada carpeta compartida mediante `synoshare --get`, sin asumir `/volume1`.
 
@@ -89,6 +90,20 @@ Synology ofrece una API REST (DSM API) para gestionar el NAS remotamente. Sin em
 
 Descarga el instalador `.msi` o `.exe` desde [Releases](../../releases). No necesitas instalar Rust ni Node.
 
+Si recibes una build local, usa preferentemente el instalador NSIS:
+
+```text
+src-tauri/target/release/bundle/nsis/Syno Perm Manager_1.0.0_x64-setup.exe
+```
+
+Alternativa MSI para despliegues corporativos:
+
+```text
+src-tauri/target/release/bundle/msi/Syno Perm Manager_1.0.0_x64_en-US.msi
+```
+
+La app se instala por usuario y guarda su base de datos local en `%APPDATA%\syno-perm-manager`. Las credenciales SSH se guardan en Windows Credential Manager.
+
 ### Desarrolladores
 
 **Requisitos previos en Windows:**
@@ -113,6 +128,11 @@ Para compilar un instalador:
 ```powershell
 npm run tauri build
 ```
+
+El comando genera:
+- Ejecutable portable de desarrollo: `src-tauri/target/release/syno-perm-manager.exe`
+- Instalador recomendado para compartir: `src-tauri/target/release/bundle/nsis/Syno Perm Manager_1.0.0_x64-setup.exe`
+- Instalador MSI: `src-tauri/target/release/bundle/msi/Syno Perm Manager_1.0.0_x64_en-US.msi`
 
 ## Uso
 
@@ -149,7 +169,7 @@ syno-perm-manager/
 │   └── router/                 # Vue Router
 ├── .github/workflows/          # CI/CD - auto-build de releases
 ├── setup.ps1                   # Script de setup para desarrolladores
-└── LICENSE                     # MIT
+└── LICENSE                     # CC BY-NC-SA 4.0
 ```
 
 ### Stack tecnologico
