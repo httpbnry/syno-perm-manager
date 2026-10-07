@@ -11,6 +11,7 @@ mod syno;
 use commands::AppState;
 use ssh::client::SshState;
 use std::sync::Mutex as StdMutex;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -37,6 +38,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(state)
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let icon = tauri::image::Image::new(include_bytes!("../icons/icon-128.rgba"), 128, 128);
+                window.set_icon(icon)?;
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             comparison::compare_users,
             comparison::cancel_comparison,

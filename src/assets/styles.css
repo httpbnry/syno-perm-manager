@@ -490,6 +490,7 @@ table tr:hover {
 .workspace-actions { display: flex; gap: 14px; align-items: center; }
 .sidebar-header { display: flex; gap: 12px; align-items: center; color: var(--text-primary); }
 .brand-mark { display: grid; place-items: center; width: 38px; height: 40px; background: linear-gradient(140deg, #111827, #1f2a44); color: #e8eef8; border-radius: 13px; font-weight: 800; box-shadow: 0 10px 24px rgba(17, 24, 39, .28); }
+[data-theme="light"] .brand-mark { background: linear-gradient(140deg, #e8eef8, #f5f7fb); color: #111827; border: 1px solid #d9e2ef; box-shadow: 0 10px 24px rgba(31, 48, 74, .1); }
 .brand-subtitle { display: block; font-size: 8px; color: var(--text-muted); letter-spacing: 1.8px; }
 .sidebar-footer { margin: 12px; padding: 14px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
 .nav-item svg { flex-shrink: 0; }
